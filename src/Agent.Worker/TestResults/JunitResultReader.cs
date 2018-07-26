@@ -195,7 +195,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
             XmlAttribute timestampNode = rootNode.Attributes["timestamp"];
             if (timestampNode != null && timestampNode.Value != null)
             {
-                if (DateTime.TryParse(timestampNode.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.None, out timestampFromXml))
+                if (DateTime.TryParse(timestampNode.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out timestampFromXml))
                 {
                     testSuiteSummary.TimeStamp = timestampFromXml;
                 }
@@ -235,6 +235,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                         resultCreateModel.AutomatedTestStorage = testCaseNode.Attributes["classname"].Value;
                     }
 
+                    if (testCaseNode.Attributes["owner"]?.Value != null)
+                    {
+                        var ownerName = testCaseNode.Attributes["owner"].Value;
+                        resultCreateModel.Owner = new IdentityRef { DisplayName = ownerName, DirectoryAlias = ownerName };
+                    }
+
                     //test case duration
                     bool TestCaseTimeDataAvailable = false;
                     var testCaseDuration = GetTimeSpan(testCaseNode, out TestCaseTimeDataAvailable);
@@ -250,10 +256,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                     if ((failure = testCaseNode.SelectSingleNode("./failure")) != null)
                     {
                         ProcessFailureNode(failure, resultCreateModel);
+                        AddSystemLogsToResult(testCaseNode, resultCreateModel);
                     }
                     else if ((error = testCaseNode.SelectSingleNode("./error")) != null)
                     {
                         ProcessFailureNode(error, resultCreateModel);
+                        AddSystemLogsToResult(testCaseNode, resultCreateModel);
                     }
                     else if ((skipped = testCaseNode.SelectSingleNode("./skipped")) != null)
                     {
@@ -278,7 +286,6 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                     if (runUserIdRef != null)
                     {
                         resultCreateModel.RunBy = runUserIdRef;
-                        resultCreateModel.Owner = runUserIdRef;
                     }
 
                     if (!string.IsNullOrEmpty(resultCreateModel.AutomatedTestName) && !string.IsNullOrEmpty(resultCreateModel.TestCaseTitle))
@@ -330,6 +337,28 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
             }
         }
 
+        private void AddSystemLogsToResult(XmlNode testCaseNode, TestCaseResultData resultCreateModel)
+        {
+            XmlNode stdout, stderr;
+
+            // Standard output logs
+            stdout = testCaseNode.SelectSingleNode("./system-out");
+
+            resultCreateModel.AttachmentData = new AttachmentData();
+            
+            if (stdout != null && !string.IsNullOrWhiteSpace(stdout.InnerText))
+            {
+                resultCreateModel.AttachmentData.ConsoleLog = stdout.InnerText;
+            }
+
+            // Standard error logs
+            stderr = testCaseNode.SelectSingleNode("./system-err");
+            if (stderr != null && !string.IsNullOrWhiteSpace(stderr.InnerText))
+            {
+                resultCreateModel.AttachmentData.StandardError = stderr.InnerText;
+            }
+        }
+
         class TestSuiteSummary
         {
             public string Name { get; set; }
@@ -352,7 +381,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
             {
                 Name = name;
                 Host = string.Empty;
-                TimeStamp = DateTime.Now;
+                TimeStamp = DateTime.UtcNow;
                 TestSuiteDuration = TimeSpan.Zero;
                 SuiteTimeDataAvailable = true;
                 SuiteTimeStampAvailable = true;

@@ -2,11 +2,13 @@
 using Microsoft.TeamFoundation.TestManagement.WebApi;
 using Microsoft.VisualStudio.Services.WebApi;
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
 using System.Xml;
 
 namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
@@ -33,8 +35,6 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
         public TestRunData ReadResults(IExecutionContext executionContext, string filePath, TestRunContext runContext)
         {
             _executionContext = executionContext;
-            _attachmentLocation = Path.Combine(Path.GetDirectoryName(filePath), Path.GetFileNameWithoutExtension(filePath), "In");
-            _executionContext.Debug(string.Format(CultureInfo.InvariantCulture, "Attachment location: {0}", _attachmentLocation));
 
             _definitions = new Dictionary<string, TestCaseDefinition>();
 
@@ -75,11 +75,11 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
             DateTime runFinishDate = DateTime.MinValue;
             if (node != null && node.Attributes["start"] != null && node.Attributes["finish"] != null)
             {
-                if (DateTime.TryParse(node.Attributes["start"].Value, DateTimeFormatInfo.InvariantInfo,DateTimeStyles.None, out runStartDate))
+                if (DateTime.TryParse(node.Attributes["start"].Value, DateTimeFormatInfo.InvariantInfo,DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out runStartDate))
                 {
                     _executionContext.Debug(string.Format(CultureInfo.InvariantCulture, "Setting run start and finish times."));
                     //Only if there is a valid start date.
-                    DateTime.TryParse(node.Attributes["finish"].Value, DateTimeFormatInfo.InvariantInfo,DateTimeStyles.None, out runFinishDate);
+                    DateTime.TryParse(node.Attributes["finish"].Value, DateTimeFormatInfo.InvariantInfo,DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out runFinishDate);
                     if (runFinishDate < runStartDate)
                     {
                         runFinishDate = runStartDate = DateTime.MinValue;
@@ -102,6 +102,20 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                 releaseUri: runContext.ReleaseUri,
                 releaseEnvironmentUri: runContext.ReleaseEnvironmentUri
                 );
+
+            //Parse the Deployment node for the runDeploymentRoot - this is the attachment root. Required for .NET Core
+            XmlNode deploymentNode = doc.SelectSingleNode("/TestRun/TestSettings/Deployment");
+            var _attachmentRoot = string.Empty;
+            if (deploymentNode != null && deploymentNode.Attributes["runDeploymentRoot"] != null )
+            {
+                _attachmentRoot = deploymentNode.Attributes["runDeploymentRoot"].Value;
+            }
+            else
+            {
+                _attachmentRoot = Path.GetFileNameWithoutExtension(filePath); // This for platform v1
+            }
+            _attachmentLocation = Path.Combine(Path.GetDirectoryName(filePath), _attachmentRoot, "In");
+            _executionContext.Debug(string.Format(CultureInfo.InvariantCulture, "Attachment location: {0}", _attachmentLocation));
 
             AddRunLevelAttachments(filePath, doc, testRunData);
 
@@ -155,12 +169,15 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                 }
             }
 
-            // Read UnitTestResults as well as WebTestResults
+            // Read UnitTestResults, WebTestResults and OrderedTestResults
             XmlNodeList resultsNodes = doc.SelectNodes("/TestRun/Results/UnitTestResult");
             XmlNodeList webTestResultNodes = doc.SelectNodes("/TestRun/Results/WebTestResult");
+            XmlNodeList orderedTestResultNodes = doc.SelectNodes("/TestRun/Results/TestResultAggregation");
 
-            results.AddRange(ReadActualResults(resultsNodes, "UnitTest"));
-            results.AddRange(ReadActualResults(webTestResultNodes, "WebTest"));
+            results.AddRange(ReadActualResults(resultsNodes, TestType.UnitTest));
+            results.AddRange(ReadActualResults(webTestResultNodes, TestType.WebTest));
+            results.AddRange(ReadActualResults(orderedTestResultNodes, TestType.OrderedTest));
+
 
             testRunData.Results = results.ToArray<TestCaseResultData>();
             _executionContext.Debug(string.Format(CultureInfo.InvariantCulture, "Total test results: {0}", testRunData.Results.Length));
@@ -249,7 +266,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
             }
         }
 
-        private List<TestCaseResultData> ReadActualResults(XmlNodeList resultsNodes, string testType)
+        private List<TestCaseResultData> ReadActualResults(XmlNodeList resultsNodes, TestType testType)
         {
             List<TestCaseResultData> results = new List<TestCaseResultData>();
 
@@ -276,11 +293,11 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                 DateTime startedDate;
                 if (resultNode.Attributes["startTime"] != null && resultNode.Attributes["startTime"].Value != null)
                 {
-                    DateTime.TryParse(resultNode.Attributes["startTime"].Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.None, out startedDate);
+                    DateTime.TryParse(resultNode.Attributes["startTime"].Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out startedDate);
                 }
                 else
                 {
-                    startedDate = DateTime.Now;
+                    startedDate = DateTime.UtcNow;
                 }
                 resultCreateModel.StartedDate = startedDate;
 
@@ -295,6 +312,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                 {
                     resultCreateModel.Outcome = TestOutcome.Passed.ToString();
                 }
+                else if (string.Equals(resultNode.Attributes["outcome"].Value, "inconclusive", StringComparison.OrdinalIgnoreCase))
+                {
+                    resultCreateModel.Outcome = TestOutcome.Inconclusive.ToString();
+                }
                 else
                 {                    
                     resultCreateModel.Outcome = TestOutcome.NotExecuted.ToString();
@@ -307,7 +328,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
 
                 resultCreateModel.State = "Completed";
 
-                resultCreateModel.AutomatedTestType = testType;
+                resultCreateModel.AutomatedTestType = testType.ToString();
 
                 if (resultNode.Attributes["computerName"] != null && resultNode.Attributes["computerName"].Value != null)
                 {
@@ -370,26 +391,135 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
 
                 resultCreateModel.RunBy = _runUserIdRef;
 
-                if (resultCreateModel.Outcome.Equals("Failed"))
+                List<string> resulLeveltAttachments = new List<string>() { };
+
+                XmlNodeList resultAttachmentNodes = resultNode.SelectNodes("CollectorDataEntries/Collector/UriAttachments/UriAttachment/A");
+                if (resultAttachmentNodes.Count > 0 && executionId != null)
                 {
-                    XmlNode errorMessage, errorStackTrace, consoleLog;
-
-                    if ((errorMessage = resultNode.SelectSingleNode("./Output/ErrorInfo/Message")) != null && !string.IsNullOrWhiteSpace(errorMessage.InnerText))
+                    foreach (XmlNode resultAttachmentNode in resultAttachmentNodes)
                     {
-                        resultCreateModel.ErrorMessage = errorMessage.InnerText;
+                        if (resultAttachmentNode.Attributes["href"]?.Value != null)
+                        {
+                            resulLeveltAttachments.Add(Path.Combine(_attachmentLocation, executionId, resultAttachmentNode.Attributes["href"].Value));
+                        }
+                    }
+                }
+
+                XmlNodeList resultFileNodes = resultNode.SelectNodes("ResultFiles/ResultFile");
+
+                if (resultFileNodes.Count > 0 && executionId != null)
+                {
+                    foreach (XmlNode resultFileNode in resultFileNodes)
+                    {
+                        if (resultFileNode.Attributes["path"]?.Value != null)
+                        {
+                            resulLeveltAttachments.Add(Path.Combine(_attachmentLocation, executionId, resultFileNode.Attributes["path"].Value));
+                        }
+                    }
+                }
+
+                resultCreateModel.AttachmentData = new AttachmentData() { AttachmentsFilePathList = resulLeveltAttachments.ToArray() };
+
+                AddVariousLogsForResultIfOutcomeIsFailed(resultCreateModel, resultNode);
+
+                XmlNode innerResults = resultNode.SelectSingleNode("InnerResults");
+                if (innerResults != null)
+                {
+                    resultCreateModel.ResultGroupType = GetResultGroupType(resultNode, testType);
+
+                    XmlNodeList resNodes = innerResults.SelectNodes("UnitTestResult");
+                    XmlNodeList webTestResultNodes = innerResults.SelectNodes("WebTestResult");
+                    XmlNodeList orderedTestResultNodes = innerResults.SelectNodes("TestResultAggregation");
+
+                    resultCreateModel.TestCaseSubResultData = new List<TestCaseSubResultData>();
+
+                    resultCreateModel.TestCaseSubResultData.AddRange(ReadActualSubResults(resNodes, TestType.UnitTest, 1));
+                    resultCreateModel.TestCaseSubResultData.AddRange(ReadActualSubResults(webTestResultNodes, TestType.WebTest, 1));
+                    resultCreateModel.TestCaseSubResultData.AddRange(ReadActualSubResults(orderedTestResultNodes, TestType.OrderedTest, 1));
+                }
+
+                lock (sync)
+                {
+                    //Mandatory fields. Skip if they are not available.
+                    if (!string.IsNullOrEmpty(resultCreateModel.AutomatedTestName) && !string.IsNullOrEmpty(resultCreateModel.TestCaseTitle))
+                    {
+                        results.Add(resultCreateModel);
                     }
 
-                    // stack trace
-                    if ((errorStackTrace = resultNode.SelectSingleNode("./Output/ErrorInfo/StackTrace")) != null && !string.IsNullOrWhiteSpace(errorStackTrace.InnerText))
-                    {
-                        resultCreateModel.StackTrace = errorStackTrace.InnerText;
-                    }
+                }
+            });
 
-                    // console log
-                    if ((consoleLog = resultNode.SelectSingleNode("./Output/StdOut")) != null && !string.IsNullOrWhiteSpace(consoleLog.InnerText))
-                    {
-                        resultCreateModel.ConsoleLog = consoleLog.InnerText;
-                    }
+            return results;
+        }
+
+        private List<TestCaseSubResultData> ReadActualSubResults(XmlNodeList resultsNodes, TestType testType, int level)
+        {
+            List<TestCaseSubResultData> results = new List<TestCaseSubResultData>();
+
+            object sync = new object();
+            var resultXmlNodes = resultsNodes.Cast<XmlNode>();
+            
+            foreach (var resultNode in resultXmlNodes)
+            {
+                TestCaseSubResultData resultCreateModel = new TestCaseSubResultData();
+
+                //Find and format dates as per TCM requirement.
+                TimeSpan duration;
+                if (resultNode.Attributes["duration"] != null && resultNode.Attributes["duration"].Value != null)
+                {
+                    TimeSpan.TryParse(resultNode.Attributes["duration"].Value, CultureInfo.InvariantCulture, out duration);
+                }
+                else
+                {
+                    duration = TimeSpan.Zero;
+                }
+                resultCreateModel.DurationInMs = (long)duration.TotalMilliseconds;
+
+                DateTime startedDate;
+                if (resultNode.Attributes["startTime"] != null && resultNode.Attributes["startTime"].Value != null)
+                {
+                    DateTime.TryParse(resultNode.Attributes["startTime"].Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out startedDate);
+                }
+                else
+                {
+                    startedDate = DateTime.UtcNow;
+                }
+                resultCreateModel.StartedDate = startedDate;
+
+                DateTime completedDate = startedDate.AddTicks(duration.Ticks);
+                resultCreateModel.CompletedDate = completedDate;
+
+                if (resultNode.Attributes["outcome"] == null || resultNode.Attributes["outcome"].Value == null || string.Equals(resultNode.Attributes["outcome"].Value, "failed", StringComparison.OrdinalIgnoreCase))
+                {
+                    resultCreateModel.Outcome = TestOutcome.Failed.ToString(); ;
+                }               
+                else if (string.Equals(resultNode.Attributes["outcome"].Value, "passed", StringComparison.OrdinalIgnoreCase))
+                {
+                    resultCreateModel.Outcome = TestOutcome.Passed.ToString();
+                }
+                else if (string.Equals(resultNode.Attributes["outcome"].Value, "inconclusive", StringComparison.OrdinalIgnoreCase))
+                {
+                    resultCreateModel.Outcome = TestOutcome.Inconclusive.ToString();
+                }
+                else
+                {                    
+                    resultCreateModel.Outcome = TestOutcome.NotExecuted.ToString();
+                }               
+
+                if (resultNode.Attributes["testName"] != null && resultNode.Attributes["testName"].Value != null)
+                {
+                    resultCreateModel.DisplayName = resultNode.Attributes["testName"].Value;
+                }
+
+                if (resultNode.Attributes["computerName"] != null && resultNode.Attributes["computerName"].Value != null)
+                {
+                    resultCreateModel.ComputerName = resultNode.Attributes["computerName"].Value;
+                }
+
+                string executionId = null;
+                if (resultNode.Attributes["executionId"] != null && resultNode.Attributes["executionId"].Value != null)
+                {
+                    executionId = resultNode.Attributes["executionId"].Value;
                 }
 
                 List<string> resulLeveltAttachments = new List<string>() { };
@@ -419,20 +549,119 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                     }
                 }
 
-                resultCreateModel.Attachments = resulLeveltAttachments.ToArray();
+                resultCreateModel.AttachmentData = new AttachmentData() { AttachmentsFilePathList = resulLeveltAttachments.ToArray() };
 
-                lock (sync)
+                AddVariousLogsForSubresultIfOutcomeIsFailed(resultCreateModel, resultNode);
+
+                XmlNode innerResults = resultNode.SelectSingleNode("InnerResults");
+                if (innerResults != null)
                 {
-                    //Mandatory fields. Skip if they are not available.
-                    if (!string.IsNullOrEmpty(resultCreateModel.AutomatedTestName) && !string.IsNullOrEmpty(resultCreateModel.TestCaseTitle))
-                    {
-                        results.Add(resultCreateModel);
-                    }
+                    resultCreateModel.ResultGroupType = GetResultGroupType(resultNode, testType);
 
+                    XmlNodeList resNodes = innerResults.SelectNodes("UnitTestResult");
+                    XmlNodeList webTestResultNodes = innerResults.SelectNodes("WebTestResult");
+                    XmlNodeList orderedTestResultNodes = innerResults.SelectNodes("TestResultAggregation");
+
+                    resultCreateModel.SubResultData = new List<TestCaseSubResultData>();
+
+                    resultCreateModel.SubResultData.AddRange(ReadActualSubResults(resNodes, TestType.UnitTest, level+1));
+                    resultCreateModel.SubResultData.AddRange(ReadActualSubResults(webTestResultNodes, TestType.WebTest, level + 1));
+                    resultCreateModel.SubResultData.AddRange(ReadActualSubResults(orderedTestResultNodes, TestType.OrderedTest, level + 1));
                 }
-            });
+
+                results.Add(resultCreateModel);
+            }
 
             return results;
+        }
+
+        private void AddVariousLogsForResultIfOutcomeIsFailed(TestCaseResultData resultCreateModel, XmlNode resultNode)
+        {
+            if (!resultCreateModel.Outcome.Equals("Failed")) return;
+            XmlNode errorMessage, errorStackTrace, consoleLog, standardError;
+
+            if ((errorMessage = resultNode.SelectSingleNode("./Output/ErrorInfo/Message")) != null
+                && !string.IsNullOrWhiteSpace(errorMessage.InnerText))
+            {
+                resultCreateModel.ErrorMessage = errorMessage.InnerText;
+            }
+
+            // stack trace
+            if ((errorStackTrace = resultNode.SelectSingleNode("./Output/ErrorInfo/StackTrace")) != null
+                && !string.IsNullOrWhiteSpace(errorStackTrace.InnerText))
+            {
+                resultCreateModel.StackTrace = errorStackTrace.InnerText;
+            }
+
+            // console log
+            if ((consoleLog = resultNode.SelectSingleNode("./Output/StdOut")) != null
+                && !string.IsNullOrWhiteSpace(consoleLog.InnerText))
+            {
+                resultCreateModel.AttachmentData.ConsoleLog = consoleLog.InnerText;
+            }
+
+            // standard error
+            if ((standardError = resultNode.SelectSingleNode("./Output/StdErr")) != null
+                && !string.IsNullOrWhiteSpace(standardError.InnerText))
+            {
+                resultCreateModel.AttachmentData.StandardError = standardError.InnerText;
+            }
+        }
+
+        private void AddVariousLogsForSubresultIfOutcomeIsFailed(TestCaseSubResultData resultCreateModel, XmlNode resultNode)
+        {
+            if (!resultCreateModel.Outcome.Equals("Failed")) return;
+            XmlNode errorMessage, errorStackTrace, consoleLog, standardError;
+
+            if ((errorMessage = resultNode.SelectSingleNode("./Output/ErrorInfo/Message")) != null
+                && !string.IsNullOrWhiteSpace(errorMessage.InnerText))
+            {
+                resultCreateModel.ErrorMessage = errorMessage.InnerText;
+            }
+
+            // stack trace
+            if ((errorStackTrace = resultNode.SelectSingleNode("./Output/ErrorInfo/StackTrace")) != null
+                && !string.IsNullOrWhiteSpace(errorStackTrace.InnerText))
+            {
+                resultCreateModel.StackTrace = errorStackTrace.InnerText;
+            }
+
+            // console log
+            if ((consoleLog = resultNode.SelectSingleNode("./Output/StdOut")) != null
+                && !string.IsNullOrWhiteSpace(consoleLog.InnerText))
+            {
+                resultCreateModel.AttachmentData.ConsoleLog = consoleLog.InnerText;
+            }
+
+            // standard error
+            if ((standardError = resultNode.SelectSingleNode("./Output/StdErr")) != null
+                && !string.IsNullOrWhiteSpace(standardError.InnerText))
+            {
+                resultCreateModel.AttachmentData.StandardError = standardError.InnerText;
+            }
+        }
+
+        private ResultGroupType GetResultGroupType(XmlNode resultNode, TestType testType)
+        {
+            if (testType == TestType.OrderedTest)
+            {
+                return ResultGroupType.OrderedTest;
+            } else
+            {
+                if (resultNode.Attributes["resultType"]?.Value != null && resultNode.Attributes["resultType"]?.Value == "DataDrivenTest")
+                {
+                    return ResultGroupType.DataDriven;
+                } 
+            }
+
+            return ResultGroupType.Generic;
+        }
+
+        private enum TestType
+        {
+            UnitTest,
+            WebTest,
+            OrderedTest
         }
     }
 

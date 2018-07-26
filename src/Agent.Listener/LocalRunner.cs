@@ -14,9 +14,11 @@ using Microsoft.TeamFoundation.DistributedTask.Orchestration.Server.Pipelines.Ya
 using Microsoft.TeamFoundation.DistributedTask.WebApi;
 using Microsoft.VisualStudio.Services.Agent.Listener.Configuration;
 using Microsoft.VisualStudio.Services.Agent.Util;
+using Microsoft.VisualStudio.Services.WebApi;
 using Newtonsoft.Json;
 using Yaml = Microsoft.TeamFoundation.DistributedTask.Orchestration.Server.Pipelines.Yaml;
 using YamlContracts = Microsoft.TeamFoundation.DistributedTask.Orchestration.Server.Pipelines.Yaml.Contracts;
+using Pipelines = Microsoft.TeamFoundation.DistributedTask.Pipelines;
 
 namespace Microsoft.VisualStudio.Services.Agent.Listener
 {
@@ -179,10 +181,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                 // Initialize and store the HTTP client.
                 var credentialManager = HostContext.GetService<ICredentialManager>();
 
-                // Get the auth type. On premise defaults to negotiate (Kerberos with fallback to NTLM).
-                // Hosted defaults to PAT authentication.
-                string defaultAuthType = UrlUtil.IsHosted(url) ? Constants.Configuration.PAT :
-                    (Constants.Agent.Platform == Constants.OSPlatform.Windows ? Constants.Configuration.Integrated : Constants.Configuration.Negotiate);
+                // Defaults to PAT authentication.
+                string defaultAuthType = Constants.Configuration.PAT;
                 string authType = command.GetAuth(defaultValue: defaultAuthType);
                 ICredentialProvider provider = credentialManager.GetCredentialProvider(authType);
                 provider.EnsureCredential(HostContext, command, url);
@@ -199,7 +199,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             {
                 jobDispatcher = HostContext.CreateService<IJobDispatcher>();
                 job.RequestMessage.Environment.Variables[Constants.Variables.Agent.RunMode] = RunMode.Local.ToString();
-                jobDispatcher.Run(job.RequestMessage);
+                jobDispatcher.Run(Pipelines.AgentJobRequestMessageUtil.Convert(job.RequestMessage));
                 Task jobDispatch = jobDispatcher.WaitAsync(token);
                 if (!Task.WaitAll(new[] { jobDispatch }, job.Timeout))
                 {
@@ -414,7 +414,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
       }}
     ],
     ""variables"": {{");
-                        builder.Append($@"
+                    builder.Append($@"
       ""system"": ""build"",
       ""system.collectionId"": ""00000000-0000-0000-0000-000000000000"",
       ""system.culture"": ""en-US"",
@@ -500,11 +500,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             if (_gitPath == null)
             {
 #if OS_WINDOWS
-                _gitPath = Path.Combine(IOUtil.GetExternalsPath(), "git", "cmd", $"git{IOUtil.ExeExtension}");
+                _gitPath = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Externals), "git", "cmd", $"git{IOUtil.ExeExtension}");
                 ArgUtil.File(_gitPath, nameof(_gitPath));
 #else
-                var whichUtil = HostContext.GetService<IWhichUtil>();
-                _gitPath = whichUtil.Which("git", require: true);
+                _gitPath = WhichUtil.Which("git", require: true);
 #endif
             }
 

@@ -30,6 +30,12 @@ namespace Microsoft.VisualStudio.Services.Agent
         public string NotificationSocketAddress { get; set; }
 
         [DataMember(EmitDefaultValue = false)]
+        public bool SkipCapabilitiesScan { get; set; }
+
+        [DataMember(EmitDefaultValue = false)]
+        public bool SkipSessionRecover { get; set; }
+
+        [DataMember(EmitDefaultValue = false)]
         public int PoolId { get; set; }
 
         [DataMember(EmitDefaultValue = false)]
@@ -42,7 +48,7 @@ namespace Microsoft.VisualStudio.Services.Agent
         public string WorkFolder { get; set; }
 
         // Do not use Project Name any more to save in agent settings file. Ensure to use ProjectId. 
-        // Deployment Group scenario will not work for project rename scneario if we work with projectName
+        // Deployment Group scenario will not work for project rename scenario if we work with projectName
         [DataMember(EmitDefaultValue = false)]
         public string ProjectName { get; set; }
 
@@ -69,6 +75,15 @@ namespace Microsoft.VisualStudio.Services.Agent
         public string UserName { get; set; }
     }
 
+    [DataContract]
+    public sealed class AgentRuntimeOptions
+    {
+#if OS_WINDOWS
+        [DataMember(EmitDefaultValue = false)]
+        public bool GitUseSecureChannel { get; set; }
+#endif
+    }
+
     [ServiceLocator(Default = typeof(ConfigurationStore))]
     public interface IConfigurationStore : IAgentService
     {
@@ -86,6 +101,9 @@ namespace Microsoft.VisualStudio.Services.Agent
         void DeleteAutoLogonSettings();
         void SaveAutoLogonSettings(AutoLogonSettings settings);
         AutoLogonSettings GetAutoLogonSettings();
+        AgentRuntimeOptions GetAgentRuntimeOptions();
+        void SaveAgentRuntimeOptions(AgentRuntimeOptions options);
+        void DeleteAgentRuntimeOptions();
     }
 
     public sealed class ConfigurationStore : AgentService, IConfigurationStore
@@ -95,9 +113,12 @@ namespace Microsoft.VisualStudio.Services.Agent
         private string _credFilePath;
         private string _serviceConfigFilePath;
         private string _autoLogonSettingsFilePath;
+        private string _runtimeOptionsFilePath;
+
         private CredentialData _creds;
         private AgentSettings _settings;
         private AutoLogonSettings _autoLogonSettings;
+        private AgentRuntimeOptions _runtimeOptions;
 
         public override void Initialize(IHostContext hostContext)
         {
@@ -112,17 +133,20 @@ namespace Microsoft.VisualStudio.Services.Agent
             RootFolder = HostContext.GetDirectory(WellKnownDirectory.Root);
             Trace.Info("RootFolder: {0}", RootFolder);
 
-            _configFilePath = IOUtil.GetConfigFilePath();
+            _configFilePath = hostContext.GetConfigFile(WellKnownConfigFile.Agent);
             Trace.Info("ConfigFilePath: {0}", _configFilePath);
 
-            _credFilePath = IOUtil.GetCredFilePath();
+            _credFilePath = hostContext.GetConfigFile(WellKnownConfigFile.Credentials);
             Trace.Info("CredFilePath: {0}", _credFilePath);
 
-            _serviceConfigFilePath = IOUtil.GetServiceConfigFilePath();
+            _serviceConfigFilePath = hostContext.GetConfigFile(WellKnownConfigFile.Service);
             Trace.Info("ServiceConfigFilePath: {0}", _serviceConfigFilePath);
 
-            _autoLogonSettingsFilePath = IOUtil.GetAutoLogonSettingsFilePath();
+            _autoLogonSettingsFilePath = hostContext.GetConfigFile(WellKnownConfigFile.Autologon);
             Trace.Info("AutoLogonSettingsFilePath: {0}", _autoLogonSettingsFilePath);
+
+            _runtimeOptionsFilePath = hostContext.GetConfigFile(WellKnownConfigFile.Options);
+            Trace.Info("RuntimeOptionsFilePath: {0}", _runtimeOptionsFilePath);
         }
 
         public string RootFolder { get; private set; }
@@ -213,7 +237,7 @@ namespace Microsoft.VisualStudio.Services.Agent
             }
 
             return _autoLogonSettings;
-        }        
+        }
 
         public void SaveCredential(CredentialData credential)
         {
@@ -277,6 +301,36 @@ namespace Microsoft.VisualStudio.Services.Agent
         public void DeleteAutoLogonSettings()
         {
             IOUtil.Delete(_autoLogonSettingsFilePath, default(CancellationToken));
+        }
+
+        public AgentRuntimeOptions GetAgentRuntimeOptions()
+        {
+            if (_runtimeOptions == null && File.Exists(_runtimeOptionsFilePath))
+            {
+                _runtimeOptions = IOUtil.LoadObject<AgentRuntimeOptions>(_runtimeOptionsFilePath);
+            }
+
+            return _runtimeOptions;
+        }
+
+        public void SaveAgentRuntimeOptions(AgentRuntimeOptions options)
+        {
+            Trace.Info("Saving runtime options.");
+            if (File.Exists(_runtimeOptionsFilePath))
+            {
+                // Delete existing runtime options file first, since the file is hidden and not able to overwrite.
+                Trace.Info("Delete exist runtime options file.");
+                IOUtil.DeleteFile(_runtimeOptionsFilePath);
+            }
+
+            IOUtil.SaveObject(options, _runtimeOptionsFilePath);
+            Trace.Info("Options Saved.");
+            File.SetAttributes(_runtimeOptionsFilePath, File.GetAttributes(_runtimeOptionsFilePath) | FileAttributes.Hidden);
+        }
+
+        public void DeleteAgentRuntimeOptions()
+        {
+            IOUtil.Delete(_runtimeOptionsFilePath, default(CancellationToken));
         }
     }
 }

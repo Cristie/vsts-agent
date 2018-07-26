@@ -7,6 +7,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+using Microsoft.VisualStudio.Services.WebApi;
+using Pipelines = Microsoft.TeamFoundation.DistributedTask.Pipelines;
 
 namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener
 {
@@ -25,7 +27,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener
             _configurationStore = new Mock<IConfigurationStore>();
         }
 
-        private AgentJobRequestMessage CreateJobRequestMessage()
+        private Pipelines.AgentJobRequestMessage CreateJobRequestMessage()
         {
             TaskOrchestrationPlanReference plan = new TaskOrchestrationPlanReference();
             TimelineReference timeline = null;
@@ -33,7 +35,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener
             List<TaskInstance> tasks = new List<TaskInstance>();
             Guid JobId = Guid.NewGuid();
             var jobRequest = new AgentJobRequestMessage(plan, timeline, JobId, "someJob", "someJob", environment, tasks);
-            return jobRequest as AgentJobRequestMessage;
+            return Pipelines.AgentJobRequestMessageUtil.Convert(jobRequest);
         }
 
         [Fact]
@@ -55,7 +57,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener
                 jobDispatcher.Initialize(hc);
 
                 var ts = new CancellationTokenSource();
-                AgentJobRequestMessage message = CreateJobRequestMessage();
+                Pipelines.AgentJobRequestMessage message = CreateJobRequestMessage();
                 string strMessage = JsonUtility.ToString(message);
 
                 _processInvoker.Setup(x => x.ExecuteAsync(It.IsAny<String>(), It.IsAny<String>(), "spawnclient 1 2", null, It.IsAny<CancellationToken>()))

@@ -143,6 +143,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
                         fileName: powerShellExe,
                         arguments: powerShellExeArgs,
                         environment: Environment,
+                        requireExitCodeZero: false,
+                        outputEncoding: null,
+                        killProcessOnCancel: false,
                         cancellationToken: ExecutionContext.CancellationToken);
                     FlushErrorData();
 

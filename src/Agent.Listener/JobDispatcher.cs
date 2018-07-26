@@ -6,13 +6,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.VisualStudio.Services.WebApi;
+using Pipelines = Microsoft.TeamFoundation.DistributedTask.Pipelines;
+using System.Linq;
+using Microsoft.VisualStudio.Services.Common;
 
 namespace Microsoft.VisualStudio.Services.Agent.Listener
 {
     [ServiceLocator(Default = typeof(JobDispatcher))]
     public interface IJobDispatcher : IAgentService
     {
-        void Run(AgentJobRequestMessage message);
+        void Run(Pipelines.AgentJobRequestMessage message);
         bool Cancel(JobCancelMessage message);
         Task WaitAsync(CancellationToken token);
         TaskResult GetLocalRunJobResult(AgentJobRequestMessage message);
@@ -28,6 +32,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
     {
         private readonly Lazy<Dictionary<long, TaskResult>> _localRunJobResult = new Lazy<Dictionary<long, TaskResult>>();
         private int _poolId;
+        AgentSettings _agentSetting;
         private static readonly string _workerProcessName = $"Agent.Worker{IOUtil.ExeExtension}";
 
         // this is not thread-safe
@@ -44,8 +49,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
 
             // get pool id from config
             var configurationStore = hostContext.GetService<IConfigurationStore>();
-            AgentSettings agentSetting = configurationStore.GetSettings();
-            _poolId = agentSetting.PoolId;
+            _agentSetting = configurationStore.GetSettings();
+            _poolId = _agentSetting.PoolId;
 
             int channelTimeoutSeconds;
             if (!int.TryParse(Environment.GetEnvironmentVariable("VSTS_AGENT_CHANNEL_TIMEOUT") ?? string.Empty, out channelTimeoutSeconds))
@@ -58,9 +63,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             Trace.Info($"Set agent/worker IPC timeout to {_channelTimeout.TotalSeconds} seconds.");
         }
 
-        public void Run(AgentJobRequestMessage jobRequestMessage)
+        public void Run(Pipelines.AgentJobRequestMessage jobRequestMessage)
         {
-            Trace.Info($"Job request {jobRequestMessage.JobId} received.");
+            Trace.Info($"Job request {jobRequestMessage.RequestId} for plan {jobRequestMessage.Plan.PlanId} job {jobRequestMessage.JobId} received.");
 
             WorkerDispatcher currentDispatch = null;
             if (_jobDispatchedQueue.Count > 0)
@@ -152,7 +157,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
 
         public async Task ShutdownAsync()
         {
-            Trace.Info($"Shutting down JobDispather. Make sure all WorkerDispatcher has finished.");
+            Trace.Info($"Shutting down JobDispatcher. Make sure all WorkerDispatcher has finished.");
             WorkerDispatcher currentDispatch = null;
             if (_jobDispatchedQueue.Count > 0)
             {
@@ -267,7 +272,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             }
         }
 
-        private async Task RunAsync(AgentJobRequestMessage message, WorkerDispatcher previousJobDispatch, CancellationToken jobRequestCancellationToken, CancellationToken workerCancelTimeoutKillToken)
+        private async Task RunAsync(Pipelines.AgentJobRequestMessage message, WorkerDispatcher previousJobDispatch, CancellationToken jobRequestCancellationToken, CancellationToken workerCancelTimeoutKillToken)
         {
             if (previousJobDispatch != null)
             {
@@ -280,7 +285,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             }
 
             var term = HostContext.GetService<ITerminal>();
-            term.WriteLine(StringUtil.Loc("RunningJob", DateTime.UtcNow, message.JobName));
+            term.WriteLine(StringUtil.Loc("RunningJob", DateTime.UtcNow, message.JobDisplayName));
 
             // first job request renew succeed.
             TaskCompletionSource<int> firstJobRequestRenewed = new TaskCompletionSource<int>();
@@ -291,7 +296,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             using (var workerProcessCancelTokenSource = new CancellationTokenSource())
             {
                 long requestId = message.RequestId;
-                Guid lockToken = message.LockToken;
+                Guid lockToken = Guid.Empty; // lockToken has never been used, keep this here of compat
 
                 // start renew job request
                 Trace.Info($"Start renew job request {requestId} for job {message.JobId}.");
@@ -320,6 +325,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                     await CompleteJobRequestAsync(_poolId, message, lockToken, TaskResult.Canceled);
                     return;
                 }
+
+                HostContext.WritePerfCounter($"JobRequestRenewed_{requestId.ToString()}");
 
                 Task<int> workerProcessTask = null;
                 object _outputLock = new object();
@@ -426,6 +433,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                     // we get first jobrequest renew succeed and start the worker process with the job message.
                     // send notification to machine provisioner.
                     await notification.JobStarted(message.JobId);
+                    HostContext.WritePerfCounter($"SentJobToWorker_{requestId.ToString()}");
 
                     try
                     {
@@ -442,12 +450,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                             if (!TaskResultUtil.IsValidReturnCode(returnCode))
                             {
                                 detailInfo = string.Join(Environment.NewLine, workerOutput);
-                                Trace.Info($"Return code {returnCode} indicate worker encounter an unhandle exception or app crash, attach worker stdout/stderr to JobRequest result.");
+                                Trace.Info($"Return code {returnCode} indicate worker encounter an unhandled exception or app crash, attach worker stdout/stderr to JobRequest result.");
+                                await LogWorkerProcessUnhandledException(message, detailInfo);
                             }
 
                             TaskResult result = TaskResultUtil.TranslateFromReturnCode(returnCode);
                             Trace.Info($"finish job request for job {message.JobId} with result: {result}");
-                            term.WriteLine(StringUtil.Loc("JobCompleted", DateTime.UtcNow, message.JobName, result));
+                            term.WriteLine(StringUtil.Loc("JobCompleted", DateTime.UtcNow, message.JobDisplayName, result));
 
                             Trace.Info($"Stop renew job request for job {message.JobId}.");
                             // stop renew lock
@@ -539,7 +548,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                         }
 
                         Trace.Info($"finish job request for job {message.JobId} with result: {resultOnAbandonOrCancel}");
-                        term.WriteLine(StringUtil.Loc("JobCompleted", DateTime.UtcNow, message.JobName, resultOnAbandonOrCancel));
+                        term.WriteLine(StringUtil.Loc("JobCompleted", DateTime.UtcNow, message.JobDisplayName, resultOnAbandonOrCancel));
                         // complete job request with cancel result, stop renew lock, job has finished.
 
                         Trace.Info($"Stop renew job request for job {message.JobId}.");
@@ -648,7 +657,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
         }
 
         // TODO: We need send detailInfo back to DT in order to add an issue for the job
-        private async Task CompleteJobRequestAsync(int poolId, AgentJobRequestMessage message, Guid lockToken, TaskResult result, string detailInfo = null)
+        private async Task CompleteJobRequestAsync(int poolId, Pipelines.AgentJobRequestMessage message, Guid lockToken, TaskResult result, string detailInfo = null)
         {
             Trace.Entering();
             if (HostContext.RunMode == RunMode.Local)
@@ -657,7 +666,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                 return;
             }
 
-            if (ApiUtil.GetFeatures(message.Plan).HasFlag(PlanFeatures.JobCompletedPlanEvent))
+            if (PlanUtil.GetFeatures(message.Plan).HasFlag(PlanFeatures.JobCompletedPlanEvent))
             {
                 Trace.Verbose($"Skip FinishAgentRequest call from Listener because Plan version is {message.Plan.Version}");
                 return;
@@ -696,6 +705,62 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
 
             // rethrow all catched exceptions during retry.
             throw new AggregateException(exceptions);
+        }
+
+        // log an error issue to job level timeline record
+        private async Task LogWorkerProcessUnhandledException(Pipelines.AgentJobRequestMessage message, string errorMessage)
+        {
+            try
+            {
+                var systemConnection = message.Resources.Endpoints.SingleOrDefault(x => string.Equals(x.Name, WellKnownServiceEndpointNames.SystemVssConnection));
+                ArgUtil.NotNull(systemConnection, nameof(systemConnection));
+
+                var jobServer = HostContext.GetService<IJobServer>();
+                VssCredentials jobServerCredential = VssUtil.GetVssCredential(systemConnection);
+                Uri jobServerUrl = systemConnection.Url;
+
+                // Make sure SystemConnection Url match Config Url base for OnPremises server
+                if ((!message.Variables.ContainsKey(Constants.Variables.System.ServerType) && !UrlUtil.IsHosted(systemConnection.Url.AbsoluteUri)) ||
+                    string.Equals(message.Variables[Constants.Variables.System.ServerType]?.Value, "OnPremises", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        Uri result = null;
+                        Uri configUri = new Uri(_agentSetting.ServerUrl);
+                        if (Uri.TryCreate(new Uri(configUri.GetComponents(UriComponents.SchemeAndServer, UriFormat.Unescaped)), jobServerUrl.PathAndQuery, out result))
+                        {
+                            //replace the schema and host portion of messageUri with the host from the
+                            //server URI (which was set at config time)
+                            jobServerUrl = result;
+                        }
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        //cannot parse the Uri - not a fatal error
+                        Trace.Error(ex);
+                    }
+                    catch (UriFormatException ex)
+                    {
+                        //cannot parse the Uri - not a fatal error
+                        Trace.Error(ex);
+                    }
+                }
+
+                VssConnection jobConnection = VssUtil.CreateConnection(jobServerUrl, jobServerCredential);
+                await jobServer.ConnectAsync(jobConnection);
+                var timeline = await jobServer.GetTimelineAsync(message.Plan.ScopeIdentifier, message.Plan.PlanType, message.Plan.PlanId, message.Timeline.Id, CancellationToken.None);
+                ArgUtil.NotNull(timeline, nameof(timeline));
+                TimelineRecord jobRecord = timeline.Records.FirstOrDefault(x => x.Id == message.JobId && x.RecordType == "Job");
+                ArgUtil.NotNull(jobRecord, nameof(jobRecord));
+                jobRecord.ErrorCount++;
+                jobRecord.Issues.Add(new Issue() { Type = IssueType.Error, Message = errorMessage });
+                await jobServer.UpdateTimelineRecordsAsync(message.Plan.ScopeIdentifier, message.Plan.PlanType, message.Plan.PlanId, message.Timeline.Id, new TimelineRecord[] { jobRecord }, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Trace.Error("Fail to report unhandled exception from Agent.Worker process");
+                Trace.Error(ex);
+            }
         }
 
         private class WorkerDispatcher : IDisposable

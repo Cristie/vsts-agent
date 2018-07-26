@@ -6,6 +6,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using BuildWebApi = Microsoft.TeamFoundation.Build.WebApi;
+using Microsoft.TeamFoundation.DistributedTask.Logging;
+using Microsoft.VisualStudio.Services.Agent.Worker.Container;
 
 namespace Microsoft.VisualStudio.Services.Agent.Worker
 {
@@ -38,41 +40,31 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             }
         }
 
-        public Variables(IHostContext hostContext, IDictionary<string, string> copy, IList<MaskHint> maskHints, out List<string> warnings)
+        public Variables(IHostContext hostContext, IDictionary<string, VariableValue> copy, out List<string> warnings)
         {
             // Store/Validate args.
             _hostContext = hostContext;
-            _secretMasker = _hostContext.GetService<ISecretMasker>();
+            _secretMasker = _hostContext.SecretMasker;
             _trace = _hostContext.GetTrace(nameof(Variables));
             ArgUtil.NotNull(hostContext, nameof(hostContext));
 
-            // Validate the dictionary, rmeove any variable with empty variable name.
+            // Validate the dictionary, remove any variable with empty variable name.
             ArgUtil.NotNull(copy, nameof(copy));
             if (copy.Keys.Any(k => string.IsNullOrWhiteSpace(k)))
             {
                 _trace.Info($"Remove {copy.Keys.Count(k => string.IsNullOrWhiteSpace(k))} variables with empty variable name.");
             }
 
-            // Filter/validate the mask hints.
-            ArgUtil.NotNull(maskHints, nameof(maskHints));
-            MaskHint[] variableMaskHints = maskHints.Where(x => x.Type == MaskType.Variable).ToArray();
-            foreach (MaskHint maskHint in variableMaskHints)
+            // Initialize the variable dictionary.
+            List<Variable> variables = new List<Variable>();
+            foreach (var variable in copy)
             {
-                string maskHintValue = maskHint.Value;
-                ArgUtil.NotNullOrEmpty(maskHintValue, nameof(maskHintValue));
+                if (!string.IsNullOrWhiteSpace(variable.Key))
+                {
+                    variables.Add(new Variable(variable.Key, variable.Value.Value, variable.Value.IsSecret));
+                }
             }
 
-            // Initialize the variable dictionary.
-            IEnumerable<Variable> variables =
-                from string name in copy.Keys
-                where !string.IsNullOrWhiteSpace(name)
-                join MaskHint maskHint in variableMaskHints // Join the variable names with the variable mask hints.
-                on name.ToUpperInvariant() equals maskHint.Value.ToUpperInvariant()
-                into maskHintGrouping
-                select new Variable(
-                    name: name,
-                    value: copy[name] ?? string.Empty,
-                    secret: maskHintGrouping.Any());
             foreach (Variable variable in variables)
             {
                 // Store the variable. The initial secret values have already been
@@ -84,7 +76,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             RecalculateExpanded(out warnings);
         }
 
-        public string Agent_BuildDirectory => Get(Constants.Variables.Agent.BuildDirectory);
+        // DO NOT add file path variable to here.
+        // All file path variables needs to be retrive and set through ExecutionContext, so it can handle container file path translation.
 
         public TaskResult? Agent_JobStatus
         {
@@ -105,23 +98,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
         public string Agent_ProxyPassword => Get(Constants.Variables.Agent.ProxyPassword);
 
-        public string Agent_ServerOMDirectory => Get(Constants.Variables.Agent.ServerOMDirectory);
+        public int? Build_BuildId => GetInt(BuildWebApi.BuildVariables.BuildId);
 
-        public string Agent_TempDirectory => Get(Constants.Variables.Agent.TempDirectory);
-
-        public string Agent_ToolsDirectory => Get(Constants.Variables.Agent.ToolsDirectory);
-
-        public bool? Agent_UseNode5 => GetBoolean(Constants.Variables.Agent.UseNode5);
-
-        public string Agent_WorkFolder => Get(Constants.Variables.Agent.WorkFolder);
-
-        public int? Build_BuildId => GetInt(BuildWebApi.WellKnownBuildVariables.BuildId);
-
-        public string Build_BuildUri => Get(BuildWebApi.WellKnownBuildVariables.BuildUri);
+        public string Build_BuildUri => Get(BuildWebApi.BuildVariables.BuildUri);
 
         public BuildCleanOption? Build_Clean => GetEnum<BuildCleanOption>(Constants.Variables.Features.BuildDirectoryClean) ?? GetEnum<BuildCleanOption>(Constants.Variables.Build.Clean);
 
-        public long? Build_ContainerId => GetLong(BuildWebApi.WellKnownBuildVariables.ContainerId);
+        public long? Build_ContainerId => GetLong(BuildWebApi.BuildVariables.ContainerId);
 
         public string Build_DefinitionName => Get(Constants.Variables.Build.DefinitionName);
 
@@ -129,13 +112,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
         public string Build_GatedShelvesetName => Get(Constants.Variables.Build.GatedShelvesetName);
 
+        public string Build_Number => Get(Constants.Variables.Build.Number);
+
         public string Build_RepoTfvcWorkspace => Get(Constants.Variables.Build.RepoTfvcWorkspace);
 
-        public string Build_RequestedFor => Get((BuildWebApi.WellKnownBuildVariables.RequestedFor));
+        public string Build_RequestedFor => Get((BuildWebApi.BuildVariables.RequestedFor));
 
         public string Build_SourceBranch => Get(Constants.Variables.Build.SourceBranch);
-
-        public string Build_SourcesDirectory => Get(Constants.Variables.Build.SourcesDirectory);
 
         public string Build_SourceTfvcShelveset => Get(Constants.Variables.Build.SourceTfvcShelveset);
 
@@ -147,6 +130,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
         public string Release_ReleaseEnvironmentUri => Get(Constants.Variables.Release.ReleaseEnvironmentUri);
 
+        public string Release_ReleaseId => Get(Constants.Variables.Release.ReleaseId);
+
+        public string Release_ReleaseName => Get(Constants.Variables.Release.ReleaseName);
+
         public string Release_ReleaseUri => Get(Constants.Variables.Release.ReleaseUri);
 
         public int? Release_Download_BufferSize => GetInt(Constants.Variables.Release.ReleaseDownloadBufferSize);
@@ -157,19 +144,19 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
         public bool? System_Debug => GetBoolean(Constants.Variables.System.Debug);
 
-        public string System_DefaultWorkingDirectory => Get(Constants.Variables.System.DefaultWorkingDirectory);
-
         public string System_DefinitionId => Get(Constants.Variables.System.DefinitionId);
 
         public bool? System_EnableAccessToken => GetBoolean(Constants.Variables.System.EnableAccessToken);
 
         public HostTypes System_HostType => GetEnum<HostTypes>(Constants.Variables.System.HostType) ?? HostTypes.None;
 
+        public string System_PhaseDisplayName => Get(Constants.Variables.System.PhaseDisplayName);
+
         public string System_TaskDefinitionsUri => Get(WellKnownDistributedTaskVariables.TaskDefinitionsUrl);
 
-        public string System_TeamProject => Get(BuildWebApi.WellKnownBuildVariables.TeamProject);
+        public string System_TeamProject => Get(BuildWebApi.BuildVariables.TeamProject);
 
-        public Guid? System_TeamProjectId => GetGuid(BuildWebApi.WellKnownBuildVariables.TeamProjectId);
+        public Guid? System_TeamProjectId => GetGuid(BuildWebApi.BuildVariables.TeamProjectId);
 
         public string System_TFCollectionUrl => Get(WellKnownDistributedTaskVariables.TFCollectionUrl);
 

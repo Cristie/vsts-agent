@@ -1,10 +1,18 @@
-# YAML getting started (internal only, public preview soon)
+# YAML getting started
 
-# Create a definition
-- Set feature flag Build2.Yaml
-- Opt in to YAML definition editor preview feature
+To create a YAML build definition, you must opt-in to the account-level preview feature: `Build YAML definitions`
 
-# Samples
+YAML builds require the latest agent. When a YAML build is queued, your agent will automatically update if it is not the latest version.
+
+## Hello world
+
+[Create a definition](yamlgettingstarted-definition.md)
+
+[Pipeline overview](yamlgettingstarted-pipeline.md)
+
+[Pipeline instance name](yamlgettingstarted-name.md)
+
+## Scripts and tasks
 
 [Run scripts](yamlgettingstarted-scripts.md)
 
@@ -12,22 +20,72 @@
 
 [Run bash scripts](yamlgettingstarted-bash.md)
 
+[Checkout repositories](yamlgettingstarted-checkout.md)
+
 [Run tasks](yamlgettingstarted-tasks.md)
 
-[Checkout options](yamlgettingstarted-checkout.md)
+## Triggers
 
-[Phase options](yamlgettingstarted-phase.md)
+[Continuous integration](yamlgettingstarted-ci.md)
 
-[Multiple phases](yamlgettingstarted-phases.md)
+## Variables
 
-<!--
-[Mustache text templating](yamlgettingstarted-mustache.md)
--->
+[Predefined variables](https://docs.microsoft.com/en-us/vsts/pipelines/build/variables)
+
+[Macro syntax](yamlgettingstarted-macros.md)
+
+[Accessing variables from scripts](yamlgettingstarted-accessingvariables.md)
+
+[Custom variables](yamlgettingstarted-customvariables.md)
+
+[Setting variables from a script](yamlgettingstarted-setvariable.md)
+
+[Secret variables](yamlgettingstarted-secretvariables.md)
+
+[Output variables](yamlgettingstarted-outputvariables.md)
+
+[OAuth token for scripts](yamlgettingstarted-token.md)
+
+## Resources
+
+[Authorization](yamlgettingstarted-authz.md)
+
+[Endpoints](yamlgettingstarted-endpoints.md)
+
+[Secure files](yamlgettingstarted-securefiles.md)
+
+<!-- todo: [Variable groups](yamlgettingstarted-variablegroups.md) -->
+
+## Phases
+
+[Options](yamlgettingstarted-job.md)
+
+[Pools](yamlgettingstarted-pools.md)
+
+[Containers](yamlgettingstarted-containers.md)
+
+[Matrix execution](yamlgettingstarted-matrix.md)
+
+[Slice execution](yamlgettingstarted-slice.md)
+
+[Multiple phases](yamlgettingstarted-jobs.md)
+
+[Output variables](yamlgettingstarted-outputvariables.md)
+
+## Templates
+
+[Step reuse](yamlgettingstarted-reusestep.md)
+
+[Phase reuse](yamlgettingstarted-reusephase.md)
+
+[Reuse from other repositories](yamlgettingstarted-reusefromrepo.md)
+
+[Template expressions](yamlgettingstarted-templateexpressions.md)
+
+## Misc
 
 [Schema reference](yamlgettingstarted-schema.md)
 
-<!--
-[Process templates](yamlgettingstarted-templates.md)
--->
+[Feature gaps](yamlgettingstarted-features.md)
 
-[Local run](yamlgettingstarted-localrun.md)
+<!-- todo: [Escaping](yamlgettingstarted-escaping.md) -->

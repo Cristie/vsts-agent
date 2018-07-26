@@ -41,12 +41,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
             ArgUtil.NotNull(context, nameof(context));
             ArgUtil.NotNull(context.Endpoints, nameof(context.Endpoints));
 
-            ServiceEndpoint systemConnection = context.Endpoints.FirstOrDefault(e => string.Equals(e.Name, ServiceEndpoints.SystemVssConnection, StringComparison.OrdinalIgnoreCase));
+            ServiceEndpoint systemConnection = context.Endpoints.FirstOrDefault(e => string.Equals(e.Name, WellKnownServiceEndpointNames.SystemVssConnection, StringComparison.OrdinalIgnoreCase));
             ArgUtil.NotNull(systemConnection, nameof(systemConnection));
             ArgUtil.NotNull(systemConnection.Url, nameof(systemConnection.Url));
 
             Uri projectUrl = systemConnection.Url;
-            VssCredentials projectCredential = ApiUtil.GetVssCredential(systemConnection);
+            VssCredentials projectCredential = VssUtil.GetVssCredential(systemConnection);
 
             Guid projectId = context.Variables.System_TeamProjectId ?? Guid.Empty;
             ArgUtil.NotEmpty(projectId, nameof(projectId));
@@ -71,15 +71,15 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
             {
                 throw new Exception(StringUtil.Loc("ArtifactTypeRequired"));
             }
-            else if ((artifactType.Equals(WellKnownArtifactResourceTypes.Container, StringComparison.OrdinalIgnoreCase) ||
-                      artifactType.Equals(WellKnownArtifactResourceTypes.FilePath, StringComparison.OrdinalIgnoreCase) ||
-                      artifactType.Equals(WellKnownArtifactResourceTypes.VersionControl, StringComparison.OrdinalIgnoreCase)) &&
+            else if ((artifactType.Equals(ArtifactResourceTypes.Container, StringComparison.OrdinalIgnoreCase) ||
+                      artifactType.Equals(ArtifactResourceTypes.FilePath, StringComparison.OrdinalIgnoreCase) ||
+                      artifactType.Equals(ArtifactResourceTypes.VersionControl, StringComparison.OrdinalIgnoreCase)) &&
                      string.IsNullOrEmpty(data))
             {
                 throw new Exception(StringUtil.Loc("ArtifactLocationRequired"));
             }
 
-            if (!artifactType.Equals(WellKnownArtifactResourceTypes.FilePath, StringComparison.OrdinalIgnoreCase) &&
+            if (!artifactType.Equals(ArtifactResourceTypes.FilePath, StringComparison.OrdinalIgnoreCase) &&
                 context.Variables.System_HostType != HostTypes.Build)
             {
                 throw new Exception(StringUtil.Loc("AssociateArtifactCommandNotSupported", context.Variables.System_HostType));
@@ -135,7 +135,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
             ArgUtil.NotNull(containerId, nameof(containerId));
 
             string artifactName;
-            if (!eventProperties.TryGetValue(ArtifactAssociateEventProperties.ArtifactName, out artifactName) ||
+            if (!eventProperties.TryGetValue(ArtifactUploadEventProperties.ArtifactName, out artifactName) ||
                 string.IsNullOrEmpty(artifactName))
             {
                 throw new Exception(StringUtil.Loc("ArtifactNameRequired"));
@@ -151,6 +151,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
             var propertyDictionary = ExtractArtifactProperties(eventProperties);
 
             string localPath = data;
+            if (context.Container != null)
+            {
+                // Translate file path back from container path
+                localPath = context.Container.TranslateToHostPath(localPath);
+            }
+
             if (string.IsNullOrEmpty(localPath))
             {
                 throw new Exception(StringUtil.Loc("ArtifactLocationRequired"));
@@ -225,7 +231,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
             context.Output(StringUtil.Loc("UploadToFileContainer", source, fileContainerFullPath));
 
             BuildServer buildHelper = new BuildServer(connection, projectId);
-            var artifact = await buildHelper.AssociateArtifact(buildId, name, WellKnownArtifactResourceTypes.Container, fileContainerFullPath, propertiesDictionary, cancellationToken);
+            var artifact = await buildHelper.AssociateArtifact(buildId, name, ArtifactResourceTypes.Container, fileContainerFullPath, propertiesDictionary, cancellationToken);
             context.Output(StringUtil.Loc("AssociateArtifactWithBuild", artifact.Id, buildId));
         }
 
@@ -280,17 +286,17 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
                 // Prioritize UNC first as leading double-backslash can also match Tfvc VC paths (multiple slashes in a row are ignored)
                 if (IsUncSharePath(context, artifactLocation))
                 {
-                    type = WellKnownArtifactResourceTypes.FilePath;
+                    type = ArtifactResourceTypes.FilePath;
                 }
                 else if (IsValidServerPath(artifactLocation))
                 {
                     // TFVC artifact
-                    type = WellKnownArtifactResourceTypes.VersionControl;
+                    type = ArtifactResourceTypes.VersionControl;
                 }
                 else if (IsContainerPath(artifactLocation))
                 {
                     // file container artifact
-                    type = WellKnownArtifactResourceTypes.Container;
+                    type = ArtifactResourceTypes.Container;
                 }
             }
 
@@ -306,7 +312,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
         {
             return eventProperties.Where(pair => !(string.Compare(pair.Key, ArtifactUploadEventProperties.ContainerFolder, StringComparison.OrdinalIgnoreCase) == 0 ||
                                                   string.Compare(pair.Key, ArtifactUploadEventProperties.ArtifactName, StringComparison.OrdinalIgnoreCase) == 0 ||
-                                                  string.Compare(pair.Key, ArtifactAssociateEventProperties.ArtifactType, StringComparison.OrdinalIgnoreCase) == 0)).ToDictionary(pair => pair.Key, pair => pair.Value);
+                                                  string.Compare(pair.Key, ArtifactUploadEventProperties.ArtifactType, StringComparison.OrdinalIgnoreCase) == 0)).ToDictionary(pair => pair.Key, pair => pair.Value);
         }
     }
 
@@ -327,6 +333,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
     {
         public static readonly string ContainerFolder = "containerfolder";
         public static readonly string ArtifactName = "artifactname";
+        public static readonly string ArtifactType = "artifacttype";
         public static readonly string Browsable = "Browsable";
     }
 }

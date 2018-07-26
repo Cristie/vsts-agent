@@ -49,8 +49,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 return false;
             }
 
-            IWorkerCommandExtension extension;
-            if (_commandExtensions.TryGetValue(command.Area, out extension))
+            if (_commandExtensions.TryGetValue(command.Area, out IWorkerCommandExtension extension))
             {
                 if (!extension.SupportedHostTypes.HasFlag(context.Variables.System_HostType))
                 {

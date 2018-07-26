@@ -1,6 +1,7 @@
 ﻿using Microsoft.VisualStudio.Services.Agent.Util;
 using System;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -94,13 +95,28 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                 }
 
                 // Validate .NET Framework 4.5 or higher is installed.
-                var netFrameworkUtil = context.GetService<INetFrameworkUtil>();
-                if (!netFrameworkUtil.Test(new Version(4, 5)))
+                if (!NetFrameworkUtil.Test(new Version(4, 5), trace))
                 {
                     terminal.WriteError(StringUtil.Loc("MinimumNetFramework"));
                     return Constants.Agent.ReturnCode.TerminatedError;
                 }
 #endif
+
+                // Add environment variables from .env file
+                string envFile = Path.Combine(context.GetDirectory(WellKnownDirectory.Root), ".env");
+                if (File.Exists(envFile))
+                {
+                    var envContents = File.ReadAllLines(envFile);
+                    foreach (var env in envContents)
+                    {
+                        if (!string.IsNullOrEmpty(env) && env.IndexOf('=') > 0)
+                        {
+                            string envKey = env.Substring(0, env.IndexOf('='));
+                            string envValue = env.Substring(env.IndexOf('=') + 1);
+                            Environment.SetEnvironmentVariable(envKey, envValue);
+                        }
+                    }
+                }
 
                 // Parse the command line args.
                 var command = new CommandSettings(context, args);

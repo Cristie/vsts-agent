@@ -39,8 +39,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener.Configuration
             // TODO: Fix bug that exists in the legacy Windows agent where configuration using mirrored credentials causes an error, but the agent is still functional (after restarting). Mirrored credentials is a supported scenario and shouldn't manifest any errors.
 
             // We use NetworkService as default account for build and release agent
-            // We use Local System as default account for deployment agent
-            NTAccount defaultServiceAccount = command.DeploymentGroup ? _windowsServiceHelper.GetDefaultAdminServiceAccount() : _windowsServiceHelper.GetDefaultServiceAccount();
+            // We use Local System as default account for deployment agent, deployment pool agent
+            bool isDeploymentGroupScenario = command.DeploymentGroup || command.DeploymentPool;
+            NTAccount defaultServiceAccount = isDeploymentGroupScenario ? _windowsServiceHelper.GetDefaultAdminServiceAccount() : _windowsServiceHelper.GetDefaultServiceAccount();
             string logonAccount = command.GetWindowsLogonAccount(defaultValue: defaultServiceAccount.ToString(), descriptionMsg: StringUtil.Loc("WindowsLogonAccountNameDescription"));
 
             string domainName;
@@ -50,6 +51,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener.Configuration
             if ((string.IsNullOrEmpty(domainName) || domainName.Equals(".", StringComparison.CurrentCultureIgnoreCase)) && !logonAccount.Contains('@'))
             {
                 logonAccount = String.Format("{0}\\{1}", Environment.MachineName, userName);
+                domainName = Environment.MachineName;
             }
 
             Trace.Info("LogonAccount after transforming: {0}, user: {1}, domain: {2}", logonAccount, userName, domainName);
@@ -134,14 +136,15 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener.Configuration
             _windowsServiceHelper.AddMemberToLocalGroup(accountName, groupName);
 
             // grant permssion for agent root folder
-            string agentRoot = IOUtil.GetRootPath();
+            string agentRoot = HostContext.GetDirectory(WellKnownDirectory.Root);
             Trace.Info(StringUtil.Format("Set full access control to group for the folder {0}", agentRoot));
             _windowsServiceHelper.GrantFullControlToGroup(agentRoot, groupName);
 
             // grant permssion for work folder
-            string workFolder = IOUtil.GetWorkPath(HostContext);
+            string workFolder = HostContext.GetDirectory(WellKnownDirectory.Work);
             Directory.CreateDirectory(workFolder);
             Trace.Info(StringUtil.Format("Set full access control to group for the folder {0}", workFolder));
+            _term.WriteLine(StringUtil.Loc("GrantingFilePermissions", accountName));
             _windowsServiceHelper.GrantFullControlToGroup(workFolder, groupName);
         }
 
@@ -152,7 +155,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener.Configuration
             Trace.Info(StringUtil.Format("Calculated unique group name {0}", groupName));
 
             // remove the group from the work folder
-            string workFolder = IOUtil.GetWorkPath(HostContext);
+            string workFolder = HostContext.GetDirectory(WellKnownDirectory.Work);
             if (Directory.Exists(workFolder))
             {
                 Trace.Info(StringUtil.Format($"Remove the group {groupName} for the folder {workFolder}."));
@@ -160,7 +163,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener.Configuration
             }
 
             //remove group from agent root folder
-            string agentRoot = IOUtil.GetRootPath();
+            string agentRoot = HostContext.GetDirectory(WellKnownDirectory.Root);
             if (Directory.Exists(agentRoot))
             {
                 Trace.Info(StringUtil.Format($"Remove the group {groupName} for the folder {agentRoot}."));
@@ -180,7 +183,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener.Configuration
                 throw new SecurityException(StringUtil.Loc("NeedAdminForUnconfigWinServiceAgent"));
             }
 
-            string serviceConfigPath = IOUtil.GetServiceConfigFilePath();
+            string serviceConfigPath = HostContext.GetConfigFile(WellKnownConfigFile.Service);
             string serviceName = File.ReadAllText(serviceConfigPath);
             if (_windowsServiceHelper.IsServiceExists(serviceName))
             {
@@ -199,7 +202,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener.Configuration
 
         private void SaveServiceSettings(string serviceName)
         {
-            string serviceConfigPath = IOUtil.GetServiceConfigFilePath();
+            string serviceConfigPath = HostContext.GetConfigFile(WellKnownConfigFile.Service);
             if (File.Exists(serviceConfigPath))
             {
                 IOUtil.DeleteFile(serviceConfigPath);

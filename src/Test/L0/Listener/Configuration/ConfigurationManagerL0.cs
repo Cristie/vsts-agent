@@ -1,6 +1,6 @@
 using Microsoft.TeamFoundation.DistributedTask.WebApi;
 using Microsoft.VisualStudio.Services.Agent.Listener;
-using Microsoft.VisualStudio.Services.Agent.Listener.Capabilities;
+using Microsoft.VisualStudio.Services.Agent.Capabilities;
 using Microsoft.VisualStudio.Services.Agent.Listener.Configuration;
 using Microsoft.VisualStudio.Services.Agent.Util;
 using Microsoft.VisualStudio.Services.WebApi;
@@ -14,19 +14,21 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Xunit;
+using Microsoft.VisualStudio.Services.Location;
 
 namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
 {
     public class ConfigurationManagerL0
     {
         private Mock<IAgentServer> _agentServer;
+        private Mock<ILocationServer> _locationServer;
         private Mock<ICredentialManager> _credMgr;
         private Mock<IPromptManager> _promptManager;
         private Mock<IConfigurationStore> _store;
         private Mock<IExtensionManager> _extnMgr;
         private Mock<IDeploymentGroupServer> _machineGroupServer;
-        private Mock<INetFrameworkUtil> _netFrameworkUtil;
         private Mock<IVstsAgentWebProxy> _vstsAgentWebProxy;
+        private Mock<IAgentCertificateManager> _cert;
 
 #if OS_WINDOWS
         private Mock<IWindowsServiceControlManager> _serviceControlManager;
@@ -52,20 +54,21 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
         private string _expectedWorkFolder = "_work";
         private int _expectedPoolId = 1;
         private int _expectedDeploymentMachineId = 81;
-        private RSA rsa = null;
+        private RSACryptoServiceProvider rsa = null;
         private AgentSettings _configMgrAgentSettings = new AgentSettings();
 
         public ConfigurationManagerL0()
         {
             _agentServer = new Mock<IAgentServer>();
+            _locationServer = new Mock<ILocationServer>();
             _credMgr = new Mock<ICredentialManager>();
             _promptManager = new Mock<IPromptManager>();
             _store = new Mock<IConfigurationStore>();
             _extnMgr = new Mock<IExtensionManager>();
             _rsaKeyManager = new Mock<IRSAKeyManager>();
             _machineGroupServer = new Mock<IDeploymentGroupServer>();
-            _netFrameworkUtil = new Mock<INetFrameworkUtil>();
             _vstsAgentWebProxy = new Mock<IVstsAgentWebProxy>();
+            _cert = new Mock<IAgentCertificateManager>();
 
 #if OS_WINDOWS
             _serviceControlManager = new Mock<IWindowsServiceControlManager>();
@@ -73,13 +76,6 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
 
 #if !OS_WINDOWS
             _serviceControlManager = new Mock<ILinuxServiceControlManager>();
-#endif
-
-#if !OS_WINDOWS
-            string eulaFile = Path.Combine(IOUtil.GetExternalsPath(), Constants.Path.TeeDirectory, "license.html");
-            Directory.CreateDirectory(IOUtil.GetExternalsPath());
-            Directory.CreateDirectory(Path.Combine(IOUtil.GetExternalsPath(), Constants.Path.TeeDirectory));
-            File.WriteAllText(eulaFile, "testeulafile");
 #endif
 
             _capabilitiesManager = new CapabilitiesManager();
@@ -92,14 +88,21 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
                 AuthorizationUrl = new Uri("http://localhost:8080/tfs"),
             };
 
+            var connectionData = new ConnectionData()
+            {
+                InstanceId = Guid.NewGuid(),
+                DeploymentType = DeploymentFlags.Hosted,
+                DeploymentId = Guid.NewGuid()
+            };
             _agentServer.Setup(x => x.ConnectAsync(It.IsAny<VssConnection>())).Returns(Task.FromResult<object>(null));
+            _locationServer.Setup(x => x.ConnectAsync(It.IsAny<VssConnection>())).Returns(Task.FromResult<object>(null));
+            _locationServer.Setup(x => x.GetConnectionDataAsync()).Returns(Task.FromResult<ConnectionData>(connectionData));
             _machineGroupServer.Setup(x => x.ConnectAsync(It.IsAny<VssConnection>())).Returns(Task.FromResult<object>(null));
-            _machineGroupServer.Setup(x => x.UpdateDeploymentMachinesAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()));
-            _machineGroupServer.Setup(x => x.AddDeploymentMachineAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<DeploymentMachine>())).Returns(Task.FromResult(expectedDeploymentMachine));
-            _machineGroupServer.Setup(x => x.ReplaceDeploymentMachineAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DeploymentMachine>())).Returns(Task.FromResult(expectedDeploymentMachine));
-            _machineGroupServer.Setup(x => x.GetDeploymentMachinesAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<string>())).Returns(Task.FromResult(new List<DeploymentMachine>() { }));
-            _machineGroupServer.Setup(x => x.DeleteDeploymentMachineAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>())).Returns(Task.FromResult<object>(null));
-            _netFrameworkUtil.Setup(x => x.Test(It.IsAny<Version>())).Returns(true);
+            _machineGroupServer.Setup(x => x.UpdateDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()));
+            _machineGroupServer.Setup(x => x.AddDeploymentTargetAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<DeploymentMachine>())).Returns(Task.FromResult(expectedDeploymentMachine));
+            _machineGroupServer.Setup(x => x.ReplaceDeploymentTargetAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DeploymentMachine>())).Returns(Task.FromResult(expectedDeploymentMachine));
+            _machineGroupServer.Setup(x => x.GetDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<string>())).Returns(Task.FromResult(new List<DeploymentMachine>() { }));
+            _machineGroupServer.Setup(x => x.DeleteDeploymentTargetAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>())).Returns(Task.FromResult<object>(null));
 
             _store.Setup(x => x.IsConfigured()).Returns(false);
             _store.Setup(x => x.HasCredentials()).Returns(false);
@@ -118,7 +121,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
 #endif
 
             var expectedPools = new List<TaskAgentPool>() { new TaskAgentPool(_expectedPoolName) { Id = _expectedPoolId } };
-            _agentServer.Setup(x => x.GetAgentPoolsAsync(It.IsAny<string>())).Returns(Task.FromResult(expectedPools));
+            _agentServer.Setup(x => x.GetAgentPoolsAsync(It.IsAny<string>(), It.IsAny<TaskAgentPoolType>())).Returns(Task.FromResult(expectedPools));
 
             var expectedAgents = new List<TaskAgent>();
             _agentServer.Setup(x => x.GetAgentsAsync(It.IsAny<int>(), It.IsAny<string>())).Returns(Task.FromResult(expectedAgents));
@@ -126,8 +129,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
             _agentServer.Setup(x => x.AddAgentAsync(It.IsAny<int>(), It.IsAny<TaskAgent>())).Returns(Task.FromResult(expectedAgent));
             _agentServer.Setup(x => x.UpdateAgentAsync(It.IsAny<int>(), It.IsAny<TaskAgent>())).Returns(Task.FromResult(expectedAgent));
 
-            rsa = RSA.Create();
-            rsa.KeySize = 2048;
+            rsa = new RSACryptoServiceProvider(2048);
 
             _rsaKeyManager.Setup(x => x.CreateKey()).Returns(rsa);
         }
@@ -140,10 +142,11 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
             tc.SetSingleton<IConfigurationStore>(_store.Object);
             tc.SetSingleton<IExtensionManager>(_extnMgr.Object);
             tc.SetSingleton<IAgentServer>(_agentServer.Object);
+            tc.SetSingleton<ILocationServer>(_locationServer.Object);
             tc.SetSingleton<IDeploymentGroupServer>(_machineGroupServer.Object);
-            tc.SetSingleton<INetFrameworkUtil>(_netFrameworkUtil.Object);
             tc.SetSingleton<ICapabilitiesManager>(_capabilitiesManager);
             tc.SetSingleton<IVstsAgentWebProxy>(_vstsAgentWebProxy.Object);
+            tc.SetSingleton<IAgentCertificateManager>(_cert.Object);
 
 #if OS_WINDOWS
             tc.SetSingleton<IWindowsServiceControlManager>(_serviceControlManager.Object);
@@ -152,8 +155,6 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
 #endif
 
             tc.SetSingleton<IRSAKeyManager>(_rsaKeyManager.Object);
-            tc.EnqueueInstance<IAgentServer>(_agentServer.Object);
-            tc.EnqueueInstance<IDeploymentGroupServer>(_machineGroupServer.Object);
 
             return tc;
         }
@@ -206,9 +207,76 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
                 Assert.True(s.PoolId.Equals(_expectedPoolId));
                 Assert.True(s.WorkFolder.Equals(_expectedWorkFolder));
 
-                // For build and release agent, tags logic should not get trigger
+                // validate GetAgentPoolsAsync gets called once with automation pool type
+                _agentServer.Verify(x => x.GetAgentPoolsAsync(It.IsAny<string>(), It.Is<TaskAgentPoolType>(p => p == TaskAgentPoolType.Automation)), Times.Once);
+
+                // validate GetAgentPoolsAsync not called with deployment pool type
+                _agentServer.Verify(x => x.GetAgentPoolsAsync(It.IsAny<string>(), It.Is<TaskAgentPoolType>(p => p == TaskAgentPoolType.Deployment)), Times.Never);
+
+                // For build and release agent / deployment pool, tags logic should not get trigger;
                 _machineGroupServer.Verify(x =>
-                     x.UpdateDeploymentMachinesAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()), Times.Never);
+                     x.UpdateDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()), Times.Never);
+            }
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "ConfigurationManagement")]
+        public async Task CanEnsureConfigureForDeploymentPool()
+        {
+            using (TestHostContext tc = CreateTestContext())
+            {
+                Tracing trace = tc.GetTrace();
+
+                trace.Info("Creating config manager");
+                IConfigurationManager configManager = new ConfigurationManager();
+                configManager.Initialize(tc);
+
+                trace.Info("Preparing command line arguments");
+                var command = new CommandSettings(
+                    tc,
+                    new[]
+                    {
+                       "configure",
+#if !OS_WINDOWS
+                       "--acceptteeeula", 
+#endif                       
+                       "--url", _expectedServerUrl,
+                       "--agent", _expectedAgentName,
+                       "--deploymentpoolname", _expectedPoolName,
+                       "--work", _expectedWorkFolder,
+                       "--auth", _expectedAuthType,
+                       "--token", _expectedToken,
+                       "--deploymentpool"
+                    });
+                trace.Info("Constructed.");
+                _store.Setup(x => x.IsConfigured()).Returns(false);
+                _configMgrAgentSettings = null;
+
+                _extnMgr.Setup(x => x.GetExtensions<IConfigurationProvider>()).Returns(GetConfigurationProviderList(tc));
+
+                trace.Info("Ensuring all the required parameters are available in the command line parameter");
+                await configManager.ConfigureAsync(command);
+
+                _store.Setup(x => x.IsConfigured()).Returns(true);
+
+                trace.Info("Configured, verifying all the parameter value");
+                var s = configManager.LoadSettings();
+                Assert.NotNull(s);
+                Assert.True(s.ServerUrl.Equals(_expectedServerUrl));
+                Assert.True(s.AgentName.Equals(_expectedAgentName));
+                Assert.True(s.PoolId.Equals(_expectedPoolId));
+                Assert.True(s.WorkFolder.Equals(_expectedWorkFolder));
+
+                // validate GetAgentPoolsAsync gets called once with deployment pool type
+                _agentServer.Verify(x => x.GetAgentPoolsAsync(It.IsAny<string>(), It.Is<TaskAgentPoolType>(p => p == TaskAgentPoolType.Deployment)), Times.Once);
+
+                // validate GetAgentPoolsAsync not called with Automation pool type
+                _agentServer.Verify(x => x.GetAgentPoolsAsync(It.IsAny<string>(), It.Is<TaskAgentPoolType>(p => p == TaskAgentPoolType.Automation)), Times.Never);
+
+                // For build and release agent / deployment pool, tags logic should not get trigger;
+                _machineGroupServer.Verify(x =>
+                     x.UpdateDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()), Times.Never);
             }
         }
 
@@ -275,7 +343,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
 
                 // Tags logic should not get trigger
                 _machineGroupServer.Verify(x =>
-                    x.UpdateDeploymentMachinesAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()), Times.Never);
+                    x.UpdateDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()), Times.Never);
             }
         }
 
@@ -345,7 +413,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
 
                 // Tags logic should not get trigger
                 _machineGroupServer.Verify(x =>
-                    x.UpdateDeploymentMachinesAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()), Times.Never);
+                    x.UpdateDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<List<DeploymentMachine>>()), Times.Never);
             }
         }
 
@@ -367,7 +435,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
             int receivedDeploymentGroupId = -1;
 
             _machineGroupServer.Setup(x =>
-                x.UpdateDeploymentMachinesAsync(It.IsAny<Guid>(), It.IsAny<int>(),
+                x.UpdateDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(),
                     It.IsAny<List<DeploymentMachine>>())).Callback((Guid project, int deploymentGroupId, List<DeploymentMachine> deploymentMachine) =>
                     {
                         receivedProjectId = project;
@@ -438,7 +506,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
                 Assert.True(receivedDeploymentGroupId.Equals(expectedDeploymentGroupId), "UpdateDeploymentMachinesGroupAsync should get call with correct deployment group id");
                 // Tags logic should get trigger
                 _machineGroupServer.Verify(x =>
-                    x.UpdateDeploymentMachinesAsync(It.IsAny<Guid>(), It.IsAny<int>(),
+                    x.UpdateDeploymentTargetsAsync(It.IsAny<Guid>(), It.IsAny<int>(),
                         It.IsAny<List<DeploymentMachine>>()), Times.Once);
             }
         }
@@ -459,7 +527,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Listener.Configuration
             _deploymentGroupAgentConfigProvider = new DeploymentGroupAgentConfigProvider();
             _deploymentGroupAgentConfigProvider.Initialize(tc);
 
-            return new List<IConfigurationProvider> { buildReleasesAgentConfigProvider, _deploymentGroupAgentConfigProvider };
+            IConfigurationProvider sharedDeploymentAgentConfiguration = new SharedDeploymentAgentConfigProvider();
+            sharedDeploymentAgentConfiguration.Initialize(tc);
+
+            return new List<IConfigurationProvider> { buildReleasesAgentConfigProvider, _deploymentGroupAgentConfigProvider, sharedDeploymentAgentConfiguration };
         }
         // TODO Unit Test for IsConfigured - Rename config file and make sure it returns false
 

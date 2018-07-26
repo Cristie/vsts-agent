@@ -4,16 +4,15 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.TeamFoundation.DistributedTask.Logging;
 
 namespace Microsoft.VisualStudio.Services.Agent.Listener
 {
     public sealed class CommandSettings
     {
-        private readonly IHostContext _context;
         private readonly Dictionary<string, string> _envArgs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly CommandLineParser _parser;
         private readonly IPromptManager _promptManager;
-        private ISecretMasker _secretMasker;
         private readonly Tracing _trace;
 
         private readonly string[] validCommands =
@@ -31,6 +30,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             Constants.Agent.CommandLine.Flags.AddDeploymentGroupTags,
             Constants.Agent.CommandLine.Flags.Commit,
             Constants.Agent.CommandLine.Flags.DeploymentGroup,
+            Constants.Agent.CommandLine.Flags.DeploymentPool,
+#if OS_WINDOWS
+            Constants.Agent.CommandLine.Flags.GitUseSChannel,
+#endif
             Constants.Agent.CommandLine.Flags.Help,
             Constants.Agent.CommandLine.Flags.MachineGroup,
             Constants.Agent.CommandLine.Flags.NoRestart,
@@ -38,6 +41,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             Constants.Agent.CommandLine.Flags.Replace,
             Constants.Agent.CommandLine.Flags.RunAsAutoLogon,
             Constants.Agent.CommandLine.Flags.RunAsService,
+            Constants.Agent.CommandLine.Flags.SslSkipCertValidation,
             Constants.Agent.CommandLine.Flags.Unattended,
             Constants.Agent.CommandLine.Flags.Version,
             Constants.Agent.CommandLine.Flags.WhatIf
@@ -49,6 +53,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             Constants.Agent.CommandLine.Args.Auth,
             Constants.Agent.CommandLine.Args.CollectionName,
             Constants.Agent.CommandLine.Args.DeploymentGroupName,
+            Constants.Agent.CommandLine.Args.DeploymentPoolName,
             Constants.Agent.CommandLine.Args.DeploymentGroupTags,
             Constants.Agent.CommandLine.Args.MachineGroupName,
             Constants.Agent.CommandLine.Args.MachineGroupTags,
@@ -61,6 +66,11 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             Constants.Agent.CommandLine.Args.ProxyPassword,
             Constants.Agent.CommandLine.Args.ProxyUrl,
             Constants.Agent.CommandLine.Args.ProxyUserName,
+            Constants.Agent.CommandLine.Args.SslCACert,
+            Constants.Agent.CommandLine.Args.SslClientCert,
+            Constants.Agent.CommandLine.Args.SslClientCertKey,
+            Constants.Agent.CommandLine.Args.SslClientCertArchive,
+            Constants.Agent.CommandLine.Args.SslClientCertPassword,
             Constants.Agent.CommandLine.Args.StartupType,
             Constants.Agent.CommandLine.Args.Token,
             Constants.Agent.CommandLine.Args.Url,
@@ -83,15 +93,16 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
         public bool Unattended => TestFlag(Constants.Agent.CommandLine.Flags.Unattended);
         public bool Version => TestFlag(Constants.Agent.CommandLine.Flags.Version);
         public bool DeploymentGroup => TestFlag(Constants.Agent.CommandLine.Flags.MachineGroup) || TestFlag(Constants.Agent.CommandLine.Flags.DeploymentGroup);
+        public bool DeploymentPool => TestFlag(Constants.Agent.CommandLine.Flags.DeploymentPool);
         public bool WhatIf => TestFlag(Constants.Agent.CommandLine.Flags.WhatIf);
-
+#if OS_WINDOWS
+        public bool GitUseSChannel => TestFlag(Constants.Agent.CommandLine.Flags.GitUseSChannel);
+#endif
         // Constructor.
         public CommandSettings(IHostContext context, string[] args)
         {
             ArgUtil.NotNull(context, nameof(context));
-            _context = context;
             _promptManager = context.GetService<IPromptManager>();
-            _secretMasker = context.GetService<ISecretMasker>();
             _trace = context.GetTrace(nameof(CommandSettings));
 
             // Parse the command line args.
@@ -119,7 +130,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
                         bool secret = Constants.Agent.CommandLine.Args.Secrets.Any(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase));
                         if (secret)
                         {
-                            _secretMasker.AddValue(val);
+                            context.SecretMasker.AddValue(val);
                         }
 
                         // Store the value.
@@ -298,6 +309,15 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
             return result;
         }
 
+        public string GetDeploymentPoolName()
+        {
+            return GetArgOrPrompt(
+                name: Constants.Agent.CommandLine.Args.DeploymentPoolName,
+                description: StringUtil.Loc("DeploymentPoolName"),
+                defaultValue: string.Empty,
+                validator: Validators.NonEmptyValidator);
+        }
+
         public string GetProjectName(string defaultValue)
         {
             return GetArgOrPrompt(
@@ -400,6 +420,36 @@ namespace Microsoft.VisualStudio.Services.Agent.Listener
         public string GetProxyPassword()
         {
             return GetArg(Constants.Agent.CommandLine.Args.ProxyPassword);
+        }
+
+        public bool GetSkipCertificateValidation()
+        {
+            return TestFlag(Constants.Agent.CommandLine.Flags.SslSkipCertValidation);
+        }
+
+        public string GetCACertificate()
+        {
+            return GetArg(Constants.Agent.CommandLine.Args.SslCACert);
+        }
+
+        public string GetClientCertificate()
+        {
+            return GetArg(Constants.Agent.CommandLine.Args.SslClientCert);
+        }
+
+        public string GetClientCertificatePrivateKey()
+        {
+            return GetArg(Constants.Agent.CommandLine.Args.SslClientCertKey);
+        }
+
+        public string GetClientCertificateArchrive()
+        {
+            return GetArg(Constants.Agent.CommandLine.Args.SslClientCertArchive);
+        }
+
+        public string GetClientCertificatePassword()
+        {
+            return GetArg(Constants.Agent.CommandLine.Args.SslClientCertPassword);
         }
 
         public void SetUnattended()

@@ -27,7 +27,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.Release
         private const int releaseId = 100;
         private const string releaseDefinitionName = "stubRd";
         private readonly Guid projectId = new Guid("B152FEAA-7E65-43C9-BCC4-07F6883EE794");
-        private readonly ReleaseDefinitionToFolderMap map = new ReleaseDefinitionToFolderMap
+        private readonly ReleaseTrackingConfig map = new ReleaseTrackingConfig
         {
             ReleaseDirectory = "r1"
         };
@@ -82,7 +82,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.Release
             {
                 _releaseDirectoryManager.Setup(manager => manager.PrepareArtifactsDirectory(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.Is<string>(s => s.Equals(id.ToString())))).Returns(map);
 
-                releaseJobExtension.InitializeJobExtension(_ec.Object);
+                releaseJobExtension.InitializeJobExtension(_ec.Object, null, null);
 
                 Assert.Equal(Path.Combine(this.stubWorkFolder, "r1", Constants.Release.Path.ArtifactsDirectory), _ec.Object.Variables.Get(Constants.Variables.Release.AgentReleaseDirectory));
                 Assert.Equal(Path.Combine(this.stubWorkFolder, "r1", Constants.Release.Path.ArtifactsDirectory), _ec.Object.Variables.Get(Constants.Variables.Release.ArtifactsDirectory));
@@ -101,7 +101,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.Release
             {
                 _releaseDirectoryManager.Setup(manager => manager.PrepareArtifactsDirectory(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.Is<string>(s => s.Equals(releaseDefinitionName)))).Returns(map);
 
-                releaseJobExtension.InitializeJobExtension(_ec.Object);
+                releaseJobExtension.InitializeJobExtension(_ec.Object, null, null);
 
                 Assert.Equal(Path.Combine(this.stubWorkFolder, "r1", Constants.Release.Path.ArtifactsDirectory), _ec.Object.Variables.Get(Constants.Variables.Release.AgentReleaseDirectory));
                 Assert.Equal(Path.Combine(this.stubWorkFolder, "r1", Constants.Release.Path.ArtifactsDirectory), _ec.Object.Variables.Get(Constants.Variables.Release.ArtifactsDirectory));
@@ -113,14 +113,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.Release
 
         private TestHostContext Setup([CallerMemberName] string name = "", bool createWorkDirectory = true, bool useReleaseDefinitionId = true)
         {
-            this.stubWorkFolder = Path.Combine(
-                Path.GetDirectoryName(Assembly.GetEntryAssembly().Location),
-                $"_work_{Path.GetRandomFileName()}");
+            TestHostContext hc = new TestHostContext(this, name);
+            this.stubWorkFolder =hc.GetDirectory(WellKnownDirectory.Work);
             if (createWorkDirectory)
             {
                 Directory.CreateDirectory(this.stubWorkFolder);
             }
-            TestHostContext hc = new TestHostContext(this, name);
+            
             _ec = new Mock<IExecutionContext>();
 
             _extensionManager = new Mock<IExtensionManager>();
@@ -133,7 +132,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.Release
             var releaseVariables = useReleaseDefinitionId
                 ? GetReleaseVariables(id.ToString(), bool.TrueString)
                 : GetReleaseVariables(null, bool.TrueString);
-            _variables = new Variables(hc, releaseVariables, new List<MaskHint>(), out warnings);
+            _variables = new Variables(hc, releaseVariables, out warnings);
 
             hc.SetSingleton(_releaseDirectoryManager.Object);
             hc.SetSingleton(_extensionManager.Object);
@@ -141,16 +140,16 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.Release
             _ec.Setup(x => x.Variables).Returns(_variables);
             _extensionManager.Setup(x => x.GetExtensions<ISourceProvider>())
                 .Returns(new List<ISourceProvider> { _sourceProvider.Object });
-            _sourceProvider.Setup(x => x.RepositoryType).Returns(WellKnownRepositoryTypes.TfsGit);
+            _sourceProvider.Setup(x => x.RepositoryType).Returns(RepositoryTypes.TfsGit);
 
             releaseJobExtension = new ReleaseJobExtension();
             releaseJobExtension.Initialize(hc);
             return hc;
         }
 
-        private Dictionary<string, string> GetReleaseVariables(string releaseDefinitionId, string skipArtifactDownload)
+        private Dictionary<string, VariableValue> GetReleaseVariables(string releaseDefinitionId, string skipArtifactDownload)
         {
-            var releaseVariables = new Dictionary<string, string>();
+            var releaseVariables = new Dictionary<string, VariableValue>();
             releaseVariables.Add(Constants.Variables.Release.ArtifactsDirectory, this.stubWorkFolder);
             releaseVariables.Add(Constants.Variables.Release.ReleaseDefinitionName, releaseDefinitionName);
             releaseVariables.Add(Constants.Variables.System.TeamProjectId, projectId.ToString());

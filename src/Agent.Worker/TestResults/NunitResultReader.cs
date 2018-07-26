@@ -198,6 +198,14 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                         {
                             resultCreateModel.StackTrace = failureStackTraceNode.InnerText;
                         }
+
+                        // console log
+                        resultCreateModel.AttachmentData = new AttachmentData();
+                        XmlNode consoleLog = testCaseNode.SelectSingleNode("./output");
+                        if (consoleLog != null && !string.IsNullOrWhiteSpace(consoleLog.InnerText))
+                        {
+                            resultCreateModel.AttachmentData.ConsoleLog = consoleLog.InnerText;
+                        }
                     }
                     else
                     {
@@ -290,11 +298,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
             duration = (duration <0) ? 0 : duration;
             testCaseResultData.DurationInMs = TimeSpan.FromSeconds(duration).TotalMilliseconds;
             var testExecutionStartedOn = DateTime.MinValue;
-            DateTime.TryParse(testCaseResultNode.Attributes["start-time"]?.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.None, out testExecutionStartedOn);
+            DateTime.TryParse(testCaseResultNode.Attributes["start-time"]?.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out testExecutionStartedOn);
             testCaseResultData.StartedDate = testExecutionStartedOn;
             var testExecutionEndedOn = DateTime.MinValue;
-            DateTime.TryParse(testCaseResultNode.Attributes["end-time"]?.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.None, out testExecutionEndedOn);
+            DateTime.TryParse(testCaseResultNode.Attributes["end-time"]?.Value, DateTimeFormatInfo.InvariantInfo,DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out testExecutionEndedOn);
             testCaseResultData.CompletedDate = testExecutionEndedOn; 
+            testCaseResultData.AttachmentData = new AttachmentData();
             if (testCaseResultNode.Attributes["result"] != null)
             {
                 if (string.Equals(testCaseResultNode.Attributes["result"].Value, "Passed", StringComparison.OrdinalIgnoreCase))
@@ -320,6 +329,14 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                     var failureStackTraceNode = failureNode.SelectSingleNode("stack-trace");
                     testCaseResultData.ErrorMessage = failureMessageNode?.InnerText;
                     testCaseResultData.StackTrace = failureStackTraceNode?.InnerText;
+
+                    // console log
+                    XmlNode consoleLog = testCaseResultNode.SelectSingleNode("output");
+                    if (consoleLog != null && !string.IsNullOrWhiteSpace(consoleLog.InnerText))
+                    {
+                        testCaseResultData.AttachmentData.ConsoleLog = consoleLog.InnerText;
+                    }
+
                 }
             }
             testCaseResultData.State = "Completed";
@@ -329,6 +346,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                 testCaseResultData.RunBy = _runUserIdRef;
                 testCaseResultData.Owner = _runUserIdRef;
             }
+
+            // Adding test-case result level attachments
+            testCaseResultData.AttachmentData.AttachmentsFilePathList = this.GetTestCaseResultLevelAttachments(testCaseResultNode).ToArray();
+
             return testCaseResultData;
         }
         public TestRunData GetTestRunData(string filePath, XmlDocument doc, XmlNode testResultsNode, TestRunContext runContext, bool addResultsAsAttachments)
@@ -337,12 +358,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
             var testRunStartedOn = DateTime.MinValue;
             var testRunEndedOn = DateTime.MinValue;
             var testCaseResults = new List<TestCaseResultData>();
+            List<string> runLevelAttachments = new List<string>();
             _runUserIdRef = runContext != null ? new IdentityRef() { DisplayName = runContext.Owner } : null;
             _platform = runContext != null ? runContext.Platform : string.Empty;
             if (testRunNode.Attributes["start-time"] != null)
             {
-                DateTime.TryParse(testRunNode.Attributes["start-time"]?.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.None, out testRunStartedOn);
-                DateTime.TryParse(testRunNode.Attributes["end-time"]?.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.None, out testRunEndedOn);
+                DateTime.TryParse(testRunNode.Attributes["start-time"]?.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out testRunStartedOn);
+                DateTime.TryParse(testRunNode.Attributes["end-time"]?.Value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out testRunEndedOn);
                 var testAssemblyNodes = testRunNode.SelectNodes("//test-suite[@type='Assembly']");
                 if (testAssemblyNodes != null)
                 {
@@ -357,9 +379,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                             {
                                 hostname = environmentNode.Attributes["machine-name"].Value;
                             }
-                            if (environmentNode.Attributes["platform"] != null)
+                            if (environmentNode.Attributes["platform"] != null && runContext?.BuildId > 0)
                             {
-                                // override platform
+                                // override platform only if there's valid build
+                                // We cannot publish platform information without a valid build id.
                                 _platform = environmentNode.Attributes["platform"].Value;
                             }
                         }
@@ -373,6 +396,11 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                         }
                     }
                 }
+
+                // Adding run level attachments.
+                runLevelAttachments = this.GetTestRunLevelAttachments(testRunNode);
+                // Adding results file itself as run level attachment.
+                runLevelAttachments.Add(filePath);
             }
             TestRunData testRunData = new TestRunData(
                 name: runContext != null && !string.IsNullOrWhiteSpace(runContext.RunName) ? runContext.RunName : _defaultRunName,
@@ -387,8 +415,35 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.TestResults
                 releaseEnvironmentUri: runContext != null ? runContext.ReleaseEnvironmentUri : null
             );
             testRunData.Results = testCaseResults.ToArray();
-            testRunData.Attachments = addResultsAsAttachments ? new string[] { filePath } : new string[0];
+            testRunData.Attachments = addResultsAsAttachments ? runLevelAttachments.ToArray() : new string[0];
             return testRunData;
+        }
+
+        private List<string> GetTestRunLevelAttachments(XmlNode testAssemblyNode)
+        {
+            var attachmentNodes = testAssemblyNode.SelectNodes("//test-suite/attachments/attachment");
+            return this.GetFilePathsFromAttachmentNodes(attachmentNodes);
+        }
+
+        private List<string> GetTestCaseResultLevelAttachments(XmlNode testCaseResultNode)
+        {
+            var attachmentNodes = testCaseResultNode.SelectNodes("./attachments/attachment");
+            return this.GetFilePathsFromAttachmentNodes(attachmentNodes);
+        }
+
+        private List<string> GetFilePathsFromAttachmentNodes(XmlNodeList attachmentNodes)
+        {
+            List<string> listOfFilePaths = new List<string>();
+            foreach (XmlNode attachment in attachmentNodes)
+            {
+                XmlNode filePathNode = attachment.SelectSingleNode("filePath");
+                if (filePathNode != null)
+                {
+                    listOfFilePaths.Add(filePathNode.InnerText);
+                }
+            }
+
+            return listOfFilePaths;
         }
     }
 

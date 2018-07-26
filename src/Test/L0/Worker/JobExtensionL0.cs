@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Xunit;
 using System.Threading;
+using Pipelines = Microsoft.TeamFoundation.DistributedTask.Pipelines;
 
 namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
 {
@@ -40,7 +41,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                 return path;
             }
 
-            public override void InitializeJobExtension(IExecutionContext context)
+            public override void InitializeJobExtension(IExecutionContext context, IList<Pipelines.JobStep> steps, Pipelines.WorkspaceOptions workspace)
             {
                 return;
             }
@@ -48,12 +49,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
 
         private IExecutionContext _jobEc;
         private JobInitializeResult _initResult = new JobInitializeResult();
-        private AgentJobRequestMessage _message;
+        private Pipelines.AgentJobRequestMessage _message;
         private Mock<ITaskManager> _taskManager;
 
         private Mock<IJobServerQueue> _jobServerQueue;
-        private Mock<ISecretMasker> _secretMasker;
         private Mock<IVstsAgentWebProxy> _proxy;
+        private Mock<IAgentCertificateManager> _cert;
         private Mock<IConfigurationStore> _config;
         private Mock<IPagingLogger> _logger;
         private Mock<IExpressionManager> _express;
@@ -65,10 +66,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
             _jobEc = new Agent.Worker.ExecutionContext();
             _taskManager = new Mock<ITaskManager>();
             _jobServerQueue = new Mock<IJobServerQueue>();
-            _secretMasker = new Mock<ISecretMasker>();
             _config = new Mock<IConfigurationStore>();
             _logger = new Mock<IPagingLogger>();
             _proxy = new Mock<IVstsAgentWebProxy>();
+            _cert = new Mock<IAgentCertificateManager>();
             _express = new Mock<IExpressionManager>();
             _containerProvider = new Mock<IContainerOperationProvider>();
 
@@ -113,6 +114,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
             environment.Variables[Constants.Variables.System.Culture] = "en-US";
             environment.SystemConnection = new ServiceEndpoint()
             {
+                Name = WellKnownServiceEndpointNames.SystemVssConnection,
                 Url = new Uri("https://test.visualstudio.com"),
                 Authorization = new EndpointAuthorization()
                 {
@@ -161,16 +163,16 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
             };
 
             Guid JobId = Guid.NewGuid();
-            _message = new AgentJobRequestMessage(plan, timeline, JobId, testName, testName, environment, tasks);
+            _message = Pipelines.AgentJobRequestMessageUtil.Convert(new AgentJobRequestMessage(plan, timeline, JobId, testName, testName, environment, tasks));
 
             _initResult.PreJobSteps.Clear();
             _initResult.JobSteps.Clear();
             _initResult.PostJobStep.Clear();
 
-            _taskManager.Setup(x => x.DownloadAsync(It.IsAny<IExecutionContext>(), It.IsAny<IEnumerable<TaskInstance>>()))
+            _taskManager.Setup(x => x.DownloadAsync(It.IsAny<IExecutionContext>(), It.IsAny<IEnumerable<Pipelines.TaskStep>>()))
                 .Returns(Task.CompletedTask);
 
-            _taskManager.Setup(x => x.Load(It.Is<TaskInstance>(t => t.DisplayName == "task1")))
+            _taskManager.Setup(x => x.Load(It.Is<Pipelines.TaskStep>(t => t.DisplayName == "task1")))
                 .Returns(new Definition()
                 {
                     Data = new DefinitionData()
@@ -180,7 +182,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                         PostJobExecution = null,
                     },
                 });
-            _taskManager.Setup(x => x.Load(It.Is<TaskInstance>(t => t.DisplayName == "task2")))
+            _taskManager.Setup(x => x.Load(It.Is<Pipelines.TaskStep>(t => t.DisplayName == "task2")))
                 .Returns(new Definition()
                 {
                     Data = new DefinitionData()
@@ -190,7 +192,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                         PostJobExecution = new ExecutionData(),
                     },
                 });
-            _taskManager.Setup(x => x.Load(It.Is<TaskInstance>(t => t.DisplayName == "task3")))
+            _taskManager.Setup(x => x.Load(It.Is<Pipelines.TaskStep>(t => t.DisplayName == "task3")))
                 .Returns(new Definition()
                 {
                     Data = new DefinitionData()
@@ -200,7 +202,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                         PostJobExecution = new ExecutionData(),
                     },
                 });
-            _taskManager.Setup(x => x.Load(It.Is<TaskInstance>(t => t.DisplayName == "task4")))
+            _taskManager.Setup(x => x.Load(It.Is<Pipelines.TaskStep>(t => t.DisplayName == "task4")))
                 .Returns(new Definition()
                 {
                     Data = new DefinitionData()
@@ -210,7 +212,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                         PostJobExecution = null,
                     },
                 });
-            _taskManager.Setup(x => x.Load(It.Is<TaskInstance>(t => t.DisplayName == "task5")))
+            _taskManager.Setup(x => x.Load(It.Is<Pipelines.TaskStep>(t => t.DisplayName == "task5")))
                 .Returns(new Definition()
                 {
                     Data = new DefinitionData()
@@ -220,7 +222,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                         PostJobExecution = new ExecutionData(),
                     },
                 });
-            _taskManager.Setup(x => x.Load(It.Is<TaskInstance>(t => t.DisplayName == "task6")))
+            _taskManager.Setup(x => x.Load(It.Is<Pipelines.TaskStep>(t => t.DisplayName == "task6")))
                 .Returns(new Definition()
                 {
                     Data = new DefinitionData()
@@ -230,7 +232,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                         PostJobExecution = null,
                     },
                 });
-            _taskManager.Setup(x => x.Load(It.Is<TaskInstance>(t => t.DisplayName == "task7")))
+            _taskManager.Setup(x => x.Load(It.Is<Pipelines.TaskStep>(t => t.DisplayName == "task7")))
                 .Returns(new Definition()
                 {
                     Data = new DefinitionData()
@@ -243,9 +245,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
 
             hc.SetSingleton(_taskManager.Object);
             hc.SetSingleton(_config.Object);
-            hc.SetSingleton(_secretMasker.Object);
             hc.SetSingleton(_jobServerQueue.Object);
             hc.SetSingleton(_proxy.Object);
+            hc.SetSingleton(_cert.Object);
             hc.SetSingleton(_express.Object);
             hc.SetSingleton(_containerProvider.Object);
             hc.EnqueueInstance<IPagingLogger>(_logger.Object); // jobcontext logger

@@ -1,0 +1,98 @@
+phases:
+
+################################################################################
+- phase: build_windows_agent
+################################################################################
+  displayName: Windows Agent
+  queue:
+    name: Hosted VS2017
+  condition: eq(false, variables.skip_windows)
+  steps:
+
+  # Steps template for windows platform
+  - template: .vsts.template.windows.yml
+  
+  # Package dotnet core windows dependency (VC++ Redistributable)
+  - powershell: |
+      Write-Host "Downloading 'VC++ Redistributable' package."
+      $outDir = Join-Path -Path $env:TMP -ChildPath ([Guid]::NewGuid())
+      New-Item -Path $outDir -ItemType directory 
+      $outFile = Join-Path -Path $outDir -ChildPath "ucrt.zip"
+      Invoke-WebRequest -Uri https://vstsagenttools.blob.core.windows.net/tools/ucrt/ucrt.zip -OutFile $outFile
+      Write-Host "Unzipping 'VC++ Redistributable' package to agent layout."
+      $unzipDir = Join-Path -Path $outDir -ChildPath "unzip"
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      [System.IO.Compression.ZipFile]::ExtractToDirectory($outFile, $unzipDir)
+      $agentLayoutBin = Join-Path -Path $(Build.SourcesDirectory) -ChildPath "_layout\bin"
+      Copy-Item -Path $unzipDir -Destination $agentLayoutBin -Force
+    displayName: Package UCRT
+    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'))
+
+  # Create agent package zip
+  - script: dev.cmd package Release
+    workingDirectory: src
+    displayName: Package Release
+    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'))
+
+  # Upload agent package zip as build artifact
+  - task: PublishBuildArtifacts@1
+    displayName: Publish Artifact (Windows)
+    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'))
+    inputs:
+      pathToPublish: _package
+      artifactName: agent
+      artifactType: container
+
+################################################################################
+- phase: build_linux_agent
+################################################################################
+  displayName: Linux Agent
+  queue:
+    name: Hosted Ubuntu 1604
+  condition: eq(false, variables.skip_linux)
+  steps:
+
+  # Steps template for windows platform
+  - template: .vsts.template.nonwindows.yml
+
+  # Create agent package zip
+  - script: ./dev.sh package Release
+    workingDirectory: src
+    displayName: Package Release
+    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'))
+
+  # Upload agent package zip as build artifact
+  - task: PublishBuildArtifacts@1
+    displayName: Publish Artifact (Linux)
+    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'))
+    inputs:
+      pathToPublish: _package
+      artifactName: agent
+      artifactType: container
+
+################################################################################
+- phase: build_osx_agent
+################################################################################
+  displayName: OSX Agent
+  queue:
+    name: Hosted macOS Preview
+  condition: eq(false, variables.skip_macos)
+  steps:
+
+  # Steps template for windows platform
+  - template: .vsts.template.nonwindows.yml
+  
+  # Create agent package zip
+  - script: ./dev.sh package Release
+    workingDirectory: src
+    displayName: Package Release
+    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'))
+
+  # Upload agent package zip as build artifact
+  - task: PublishBuildArtifacts@1
+    displayName: Publish Artifact (OSX)
+    condition: and(succeeded(), ne(variables['build.reason'], 'PullRequest'))
+    inputs:
+      pathToPublish: _package
+      artifactName: agent
+      artifactType: container

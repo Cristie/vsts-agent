@@ -1,4 +1,5 @@
 using Microsoft.TeamFoundation.DistributedTask.WebApi;
+using Pipelines = Microsoft.TeamFoundation.DistributedTask.Pipelines;
 using Microsoft.VisualStudio.Services.Agent.Util;
 using Newtonsoft.Json;
 using System;
@@ -14,28 +15,29 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
     [ServiceLocator(Default = typeof(TaskManager))]
     public interface ITaskManager : IAgentService
     {
-        Task DownloadAsync(IExecutionContext executionContext, IEnumerable<TaskInstance> tasks);
+        Task DownloadAsync(IExecutionContext executionContext, IEnumerable<Pipelines.JobStep> steps);
 
-        Definition Load(TaskReference task);
+        Definition Load(Pipelines.TaskStep task);
     }
 
     public sealed class TaskManager : AgentService, ITaskManager
     {
-        public async Task DownloadAsync(IExecutionContext executionContext, IEnumerable<TaskInstance> tasks)
+        public async Task DownloadAsync(IExecutionContext executionContext, IEnumerable<Pipelines.JobStep> steps)
         {
             ArgUtil.NotNull(executionContext, nameof(executionContext));
-            ArgUtil.NotNull(tasks, nameof(tasks));
+            ArgUtil.NotNull(steps, nameof(steps));
 
             executionContext.Output(StringUtil.Loc("EnsureTasksExist"));
 
-            //remove duplicate and disabled tasks
-            IEnumerable<TaskInstance> uniqueTasks =
+            IEnumerable<Pipelines.TaskStep> tasks = steps.OfType<Pipelines.TaskStep>();
+
+            //remove duplicate, disabled and built-in tasks
+            IEnumerable<Pipelines.TaskStep> uniqueTasks =
                 from task in tasks
-                where task.Enabled
                 group task by new
                 {
-                    task.Id,
-                    task.Version
+                    task.Reference.Id,
+                    task.Reference.Version
                 }
                 into taskGrouping
                 select taskGrouping.First();
@@ -46,20 +48,45 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 return;
             }
 
-            foreach (TaskInstance task in uniqueTasks)
+            foreach (var task in uniqueTasks.Select(x => x.Reference))
             {
+                if (task.Id == Pipelines.PipelineConstants.CheckoutTask.Id && task.Version == Pipelines.PipelineConstants.CheckoutTask.Version)
+                {
+                    Trace.Info("Skip download checkout task.");
+                    continue;
+                }
                 await DownloadAsync(executionContext, task);
             }
         }
 
-        public Definition Load(TaskReference task)
+        public Definition Load(Pipelines.TaskStep task)
         {
             // Validate args.
             Trace.Entering();
             ArgUtil.NotNull(task, nameof(task));
 
+            if (task.Reference.Id == Pipelines.PipelineConstants.CheckoutTask.Id && task.Reference.Version == Pipelines.PipelineConstants.CheckoutTask.Version)
+            {
+                var checkoutTask = new Definition()
+                {
+                    Directory = HostContext.GetDirectory(WellKnownDirectory.Tasks),
+                    Data = new DefinitionData()
+                    {
+                        Author = Pipelines.PipelineConstants.CheckoutTask.Author,
+                        Description = Pipelines.PipelineConstants.CheckoutTask.Description,
+                        FriendlyName = Pipelines.PipelineConstants.CheckoutTask.FriendlyName,
+                        HelpMarkDown = Pipelines.PipelineConstants.CheckoutTask.HelpMarkDown,
+                        Inputs = Pipelines.PipelineConstants.CheckoutTask.Inputs.ToArray(),
+                        Execution = StringUtil.ConvertFromJson<ExecutionData>(StringUtil.ConvertToJson(Pipelines.PipelineConstants.CheckoutTask.Execution)),
+                        PostJobExecution = StringUtil.ConvertFromJson<ExecutionData>(StringUtil.ConvertToJson(Pipelines.PipelineConstants.CheckoutTask.PostJobExecution))
+                    }
+                };
+
+                return checkoutTask;
+            }
+
             // Initialize the definition wrapper object.
-            var definition = new Definition() { Directory = GetDirectory(task) };
+            var definition = new Definition() { Directory = GetDirectory(task.Reference) };
 
             // Deserialize the JSON.
             string file = Path.Combine(definition.Directory, Constants.Path.TaskJsonFile);
@@ -76,7 +103,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             return definition;
         }
 
-        private async Task DownloadAsync(IExecutionContext executionContext, TaskInstance task)
+        private async Task DownloadAsync(IExecutionContext executionContext, Pipelines.TaskStepDefinitionReference task)
         {
             Trace.Entering();
             ArgUtil.NotNull(executionContext, nameof(executionContext));
@@ -105,7 +132,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             var version = new TaskVersion(task.Version);
 
             //download and extract task in a temp folder and rename it on success
-            string tempDirectory = Path.Combine(IOUtil.GetTasksPath(HostContext), "_temp_" + Guid.NewGuid());
+            string tempDirectory = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Tasks), "_temp_" + Guid.NewGuid());
             try
             {
                 Directory.CreateDirectory(tempDirectory);
@@ -150,13 +177,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             }
         }
 
-        private string GetDirectory(TaskReference task)
+        private string GetDirectory(Pipelines.TaskStepDefinitionReference task)
         {
             ArgUtil.NotEmpty(task.Id, nameof(task.Id));
             ArgUtil.NotNull(task.Name, nameof(task.Name));
             ArgUtil.NotNullOrEmpty(task.Version, nameof(task.Version));
             return Path.Combine(
-                IOUtil.GetTasksPath(HostContext),
+                HostContext.GetDirectory(WellKnownDirectory.Tasks),
                 $"{task.Name}_{task.Id}",
                 task.Version);
         }
@@ -196,6 +223,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
         private PowerShell3HandlerData _powerShell3;
         private PowerShellExeHandlerData _powerShellExe;
         private ProcessHandlerData _process;
+        private AgentPluginHandlerData _agentPlugin;
 
         [JsonIgnore]
         public List<HandlerData> All => _all;
@@ -295,6 +323,20 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             set
             {
                 _process = value;
+                Add(value);
+            }
+        }
+
+        public AgentPluginHandlerData AgentPlugin
+        {
+            get
+            {
+                return _agentPlugin;
+            }
+
+            set
+            {
+                _agentPlugin = value;
                 Add(value);
             }
         }
@@ -566,5 +608,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 SetInput(nameof(WorkingDirectory), value);
             }
         }
+    }
+
+    public sealed class AgentPluginHandlerData : HandlerData
+    {
+        public override int Priority => 0;
     }
 }

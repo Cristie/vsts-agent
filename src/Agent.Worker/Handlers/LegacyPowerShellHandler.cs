@@ -6,6 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.VisualStudio.Services.WebApi;
+using System.Xml;
 
 namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
 {
@@ -157,6 +159,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
     public abstract class LegacyPowerShellHandler : Handler
     {
         private Regex _argumentMatching = new Regex("([^\" ]*(\"[^\"]*\")[^\" ]*)|[^\" ]+", RegexOptions.Compiled);
+        private string _appConfigFileName = "LegacyVSTSPowerShellHost.exe.config";
+        private string _appConfigRestoreFileName = "LegacyVSTSPowerShellHost.exe.config.restore";
 
         protected abstract string GetArgumentFormat();
 
@@ -204,6 +208,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             AddLegacyHostEnvironmentVariables(scriptFile: scriptFile, workingDirectory: workingDirectory);
             AddPrependPathToEnvironment();
 
+            // Add proxy setting to LegacyVSTSPowerShellHost.exe.config
+            var agentProxy = HostContext.GetService<IVstsAgentWebProxy>();
+            if (!string.IsNullOrEmpty(agentProxy.ProxyAddress))
+            {
+                AddProxySetting(agentProxy);
+            }
+
             // Invoke the process.
             using (var processInvoker = HostContext.CreateService<IProcessInvoker>())
             {
@@ -217,6 +228,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
                                                                        fileName: vstsPSHostExe,
                                                                        arguments: "",
                                                                        environment: Environment,
+                                                                       requireExitCodeZero: false,
+                                                                       outputEncoding: null,
+                                                                       killProcessOnCancel: false,
                                                                        cancellationToken: ExecutionContext.CancellationToken);
 
                     // the exit code from vstsPSHost.exe indicate how many error record we get during execution
@@ -337,9 +351,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             foreach (ServiceEndpoint endpoint in ExecutionContext.Endpoints)
             {
                 string partialKey = null;
-                if (string.Equals(endpoint.Name, ServiceEndpoints.SystemVssConnection, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(endpoint.Name, WellKnownServiceEndpointNames.SystemVssConnection, StringComparison.OrdinalIgnoreCase))
                 {
-                    partialKey = ServiceEndpoints.SystemVssConnection.ToUpperInvariant();
+                    partialKey = WellKnownServiceEndpointNames.SystemVssConnection.ToUpperInvariant();
                     AddEnvironmentVariable("VSTSPSHOSTSYSTEMENDPOINT_URL", endpoint.Url.ToString());
                     AddEnvironmentVariable("VSTSPSHOSTSYSTEMENDPOINT_AUTH", JsonUtility.ToString(endpoint.Authorization));
                 }
@@ -356,7 +370,19 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
 
                     ids.Add(partialKey);
                     AddEnvironmentVariable("VSTSPSHOSTENDPOINT_URL_" + partialKey, endpoint.Url.ToString());
-                    AddEnvironmentVariable("VSTSPSHOSTENDPOINT_NAME_" + partialKey, endpoint.Name);
+
+                    // We fixed endpoint.name to be the name of the endpoint in yaml, before endpoint.name=endpoint.id is a guid
+                    // However, for source endpoint, the endpoint.id is Guid.Empty and endpoint.name is already the name of the endpoint
+                    // The legacy PSHost use the Guid to retrive endpoint, the legacy PSHost assume `VSTSPSHOSTENDPOINT_NAME_` is the Guid.
+                    if (endpoint.Id == Guid.Empty && endpoint.Data.ContainsKey("repositoryId"))
+                    {
+                        AddEnvironmentVariable("VSTSPSHOSTENDPOINT_NAME_" + partialKey, endpoint.Name);
+                    }
+                    else
+                    {
+                        AddEnvironmentVariable("VSTSPSHOSTENDPOINT_NAME_" + partialKey, endpoint.Id.ToString());
+                    }
+
                     AddEnvironmentVariable("VSTSPSHOSTENDPOINT_TYPE_" + partialKey, endpoint.Type);
                     AddEnvironmentVariable("VSTSPSHOSTENDPOINT_AUTH_" + partialKey, JsonUtility.ToString(endpoint.Authorization));
                     AddEnvironmentVariable("VSTSPSHOSTENDPOINT_DATA_" + partialKey, JsonUtility.ToString(endpoint.Data));
@@ -366,6 +392,86 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             if (ids.Count > 0)
             {
                 AddEnvironmentVariable("VSTSPSHOSTENDPOINT_IDS", JsonUtility.ToString(ids));
+            }
+        }
+
+        private void AddProxySetting(IVstsAgentWebProxy agentProxy)
+        {
+            string appConfig = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.LegacyPSHost), _appConfigFileName);
+            ArgUtil.File(appConfig, _appConfigFileName);
+
+            string appConfigRestore = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.LegacyPSHost), _appConfigRestoreFileName);
+            if (!File.Exists(appConfigRestore))
+            {
+                Trace.Info("Take snapshot of current appconfig for restore modified appconfig.");
+                File.Copy(appConfig, appConfigRestore);
+            }
+            else
+            {
+                // cleanup any appconfig changes from previous build.
+                ExecutionContext.Debug("Restore default LegacyVSTSPowerShellHost.exe.config.");
+                IOUtil.DeleteFile(appConfig);
+                File.Copy(appConfigRestore, appConfig);
+            }
+
+            XmlDocument psHostAppConfig = new XmlDocument();
+            using (var appConfigStream = new FileStream(appConfig, FileMode.Open, FileAccess.Read))
+            {
+                psHostAppConfig.Load(appConfigStream);
+            }
+
+            var configuration = psHostAppConfig.SelectSingleNode("configuration");
+            ArgUtil.NotNull(configuration, "configuration");
+
+            var exist_defaultProxy = psHostAppConfig.SelectSingleNode("configuration/system.net/defaultProxy");
+            if (exist_defaultProxy == null)
+            {
+                var system_net = psHostAppConfig.SelectSingleNode("configuration/system.net");
+                if (system_net == null)
+                {
+                    Trace.Verbose("Create system.net section in appconfg.");
+                    system_net = psHostAppConfig.CreateElement("system.net");
+                }
+
+                Trace.Verbose("Create defaultProxy section in appconfg.");
+                var defaultProxy = psHostAppConfig.CreateElement("defaultProxy");
+                defaultProxy.SetAttribute("useDefaultCredentials", "true");
+
+                Trace.Verbose("Create proxy section in appconfg.");
+                var proxy = psHostAppConfig.CreateElement("proxy");
+                proxy.SetAttribute("proxyaddress", agentProxy.ProxyAddress);
+                proxy.SetAttribute("bypassonlocal", "true");
+
+                if (agentProxy.ProxyBypassList != null && agentProxy.ProxyBypassList.Count > 0)
+                {
+                    Trace.Verbose("Create bypasslist section in appconfg.");
+                    var bypass = psHostAppConfig.CreateElement("bypasslist");
+                    foreach (string proxyBypass in agentProxy.ProxyBypassList)
+                    {
+                        Trace.Verbose($"Create bypasslist.add section for {proxyBypass} in appconfg.");
+                        var add = psHostAppConfig.CreateElement("add");
+                        add.SetAttribute("address", proxyBypass);
+                        bypass.AppendChild(add);
+                    }
+
+                    defaultProxy.AppendChild(bypass);
+                }
+
+                defaultProxy.AppendChild(proxy);
+                system_net.AppendChild(defaultProxy);
+                configuration.AppendChild(system_net);
+
+                using (var appConfigStream = new FileStream(appConfig, FileMode.Open, FileAccess.ReadWrite))
+                {
+                    psHostAppConfig.Save(appConfigStream);
+                }
+
+                ExecutionContext.Debug("Add Proxy setting in LegacyVSTSPowerShellHost.exe.config file.");
+            }
+            else
+            {
+                //proxy setting exist.
+                ExecutionContext.Debug("Proxy setting already exist in LegacyVSTSPowerShellHost.exe.config file.");
             }
         }
 

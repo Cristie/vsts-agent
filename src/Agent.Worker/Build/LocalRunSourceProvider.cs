@@ -25,7 +25,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
 
             bool preferGitFromPath;
 #if OS_WINDOWS
-            preferGitFromPath = executionContext.Variables.GetBoolean(Constants.Variables.System.PreferGitFromPath) ?? false;
+            preferGitFromPath = false;
 #else
             preferGitFromPath = true;
 #endif
@@ -35,15 +35,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Build
                 string gitPath = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Externals), "git", "cmd", $"git{IOUtil.ExeExtension}");
                 ArgUtil.File(gitPath, nameof(gitPath));
                 executionContext.Output(StringUtil.Loc("Prepending0WithDirectoryContaining1", Constants.PathVariable, Path.GetFileName(gitPath)));
-                var varUtil = HostContext.GetService<IVarUtil>();
-                varUtil.PrependPath(Path.GetDirectoryName(gitPath));
+                PathUtil.PrependPath(Path.GetDirectoryName(gitPath));
                 executionContext.Debug($"{Constants.PathVariable}: '{Environment.GetEnvironmentVariable(Constants.PathVariable)}'");
             }
             else
             {
                 // Validate git is in the PATH.
-                var whichUtil = HostContext.GetService<IWhichUtil>();
-                whichUtil.Which("git", require: true);
+                WhichUtil.Which("git", require: true, trace: Trace);
             }
 
             // Override build.sourcesDirectory.

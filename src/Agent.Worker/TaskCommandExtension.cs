@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Microsoft.VisualStudio.Services.Agent.Worker
 {
@@ -66,6 +67,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             else if (String.Equals(command.Event, WellKnownTaskCommand.SetTaskVariable, StringComparison.OrdinalIgnoreCase))
             {
                 ProcessTaskSetTaskVariableCommand(context, command.Properties, command.Data);
+            }
+            else if (String.Equals(command.Event, WellKnownTaskCommand.SetEndpoint, StringComparison.OrdinalIgnoreCase))
+            {
+                ProcessTaskSetEndpointCommand(context, command.Properties, command.Data);
             }
             else if (String.Equals(command.Event, WellKnownTaskCommand.PrependPath, StringComparison.OrdinalIgnoreCase))
             {
@@ -292,6 +297,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             }
 
             string filePath = data;
+            if (context.Container != null)
+            {
+                // Translate file path back from container path
+                filePath = context.Container.TranslateToHostPath(filePath);
+            }
+
             if (!String.IsNullOrEmpty(filePath) && File.Exists(filePath))
             {
                 // Upload attachment
@@ -305,13 +316,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
         private void ProcessTaskIssueCommand(IExecutionContext context, Dictionary<string, string> eventProperties, string data)
         {
-            string logLine = "";
             Issue taskIssue = null;
 
             String issueType;
             if (eventProperties.TryGetValue(TaskIssueEventProperties.Type, out issueType))
             {
-                taskIssue = CreateIssue(context, issueType, data, eventProperties, out logLine);
+                taskIssue = CreateIssue(context, issueType, data, eventProperties);
             }
 
             if (taskIssue == null)
@@ -321,21 +331,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
             }
 
             context.AddIssue(taskIssue);
-
-            if (!String.IsNullOrEmpty(logLine))
-            {
-                if (taskIssue.Type == IssueType.Error)
-                {
-                    context.Write(WellKnownTags.Error, logLine);
-                }
-                else
-                {
-                    context.Write(WellKnownTags.Warning, logLine);
-                }
-            }
         }
 
-        private Issue CreateIssue(IExecutionContext context, string issueType, String message, Dictionary<String, String> properties, out String messageToLog)
+        private Issue CreateIssue(IExecutionContext context, string issueType, String message, Dictionary<String, String> properties)
         {
             Issue issue = new Issue()
             {
@@ -355,8 +353,6 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 throw new Exception($"issue type {issueType} is not an expected issue type.");
             }
 
-            messageToLog = message;
-
             String sourcePath;
             if (properties.TryGetValue(ProjectIssueProperties.SourcePath, out sourcePath))
             {
@@ -371,6 +367,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
 
                 if (extension != null)
                 {
+                    if (context.Container != null)
+                    {
+                        // Translate file path back from container path
+                        sourcePath = context.Container.TranslateToHostPath(sourcePath);
+                        properties[ProjectIssueProperties.SourcePath] = sourcePath;
+                    }
+
                     // Get the values that represent the server path given a local path
                     string repoName;
                     string relativeSourcePath;
@@ -400,7 +403,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                     properties.TryGetValue(ProjectIssueProperties.Code, out codeValue);
 
                     //ex. Program.cs(13, 18): error CS1002: ; expected
-                    messageToLog = String.Format(CultureInfo.InvariantCulture, "{0}({1},{2}): {3} {4}: {5}",
+                    message = String.Format(CultureInfo.InvariantCulture, "{0}({1},{2}): {3} {4}: {5}",
                         sourcePathValue,
                         lineNumberValue,
                         columnNumberValue,
@@ -418,7 +421,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 }
             }
 
-            issue.Message = messageToLog;
+            issue.Message = message;
 
             return issue;
         }
@@ -458,8 +461,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
         {
             if (!string.IsNullOrEmpty(data))
             {
-                var _secretMasker = HostContext.GetService<ISecretMasker>();
-                _secretMasker.AddRegex(data);
+                HostContext.SecretMasker.AddValue(data);
             }
         }
 
@@ -485,6 +487,22 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 Boolean.TryParse(isOutputValue, out isOutput);
             }
 
+            if (isSecret)
+            {
+                bool? allowMultilineSecret = context.Variables.GetBoolean("SYSTEM_UNSAFEALLOWMULTILINESECRET");
+                if (allowMultilineSecret == null)
+                {
+                    allowMultilineSecret = StringUtil.ConvertToBoolean(Environment.GetEnvironmentVariable("SYSTEM_UNSAFEALLOWMULTILINESECRET"), false);
+                }
+
+                if (!string.IsNullOrEmpty(data) &&
+                    data.Contains(Environment.NewLine) &&
+                    !allowMultilineSecret.Value)
+                {
+                    throw new InvalidOperationException(StringUtil.Loc("MultilineSecret"));
+                }
+            }
+
             context.SetVariable(name, data, isSecret, isOutput);
         }
 
@@ -508,7 +526,92 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
                 Boolean.TryParse(isSecretValue, out isSecret);
             }
 
+            if (isSecret)
+            {
+                bool? allowMultilineSecret = context.Variables.GetBoolean("SYSTEM_UNSAFEALLOWMULTILINESECRET");
+                if (allowMultilineSecret == null)
+                {
+                    allowMultilineSecret = StringUtil.ConvertToBoolean(Environment.GetEnvironmentVariable("SYSTEM_UNSAFEALLOWMULTILINESECRET"), false);
+                }
+
+                if (!string.IsNullOrEmpty(data) &&
+                    data.Contains(Environment.NewLine) &&
+                    !allowMultilineSecret.Value)
+                {
+                    throw new InvalidOperationException(StringUtil.Loc("MultilineSecret"));
+                }
+            }
+
             context.TaskVariables.Set(name, data, isSecret);
+        }
+
+        private void ProcessTaskSetEndpointCommand(IExecutionContext context, Dictionary<string, string> eventProperties, string data)
+        {
+            if (string.IsNullOrEmpty(data))
+            {
+                throw new Exception(StringUtil.Loc("EnterValidValueFor0", "setendpoint"));
+            }
+
+            String field;
+            if (!eventProperties.TryGetValue(TaskSetEndpointEventProperties.Field, out field) || String.IsNullOrEmpty(field))
+            {
+                throw new Exception(StringUtil.Loc("MissingEndpointField"));
+            }
+
+            // Mask auth parameter data upfront to avoid accidental secret exposure by invalid endpoint/key/data 
+            if (String.Equals(field, "authParameter", StringComparison.OrdinalIgnoreCase))
+            {
+                HostContext.SecretMasker.AddValue(data);
+            }
+
+            String endpointIdInput;
+            if (!eventProperties.TryGetValue(TaskSetEndpointEventProperties.EndpointId, out endpointIdInput) || String.IsNullOrEmpty(endpointIdInput))
+            {
+                throw new Exception(StringUtil.Loc("MissingEndpointId"));
+            }
+
+            Guid endpointId;
+            if (!Guid.TryParse(endpointIdInput, out endpointId))
+            {
+                throw new Exception(StringUtil.Loc("InvalidEndpointId"));
+            }
+
+            var endpoint = context.Endpoints.Find(a => a.Id == endpointId);
+            if (endpoint == null)
+            {
+                throw new Exception(StringUtil.Loc("InvalidEndpointId"));
+            }
+
+            if (String.Equals(field, "url", StringComparison.OrdinalIgnoreCase))
+            {
+                Uri uri;
+                if (!Uri.TryCreate(data, UriKind.Absolute, out uri))
+                {
+                    throw new Exception(StringUtil.Loc("InvalidEndpointUrl"));
+                }
+
+                endpoint.Url = uri;
+                return;
+            }
+
+            String key;
+            if (!eventProperties.TryGetValue(TaskSetEndpointEventProperties.Key, out key) || String.IsNullOrEmpty(key))
+            {
+                throw new Exception(StringUtil.Loc("MissingEndpointKey"));
+            }
+
+            if (String.Equals(field, "dataParameter", StringComparison.OrdinalIgnoreCase))
+            {
+                endpoint.Data[key] = data;
+            }
+            else if (String.Equals(field, "authParameter", StringComparison.OrdinalIgnoreCase))
+            {
+                endpoint.Authorization.Parameters[key] = data;
+            }
+            else
+            {
+                throw new Exception(StringUtil.Loc("InvalidEndpointField"));
+            }
         }
 
         private void ProcessTaskPrepandPathCommand(IExecutionContext context, string data)
@@ -554,6 +657,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
         public static readonly String SetSecret = "setsecret";
         public static readonly String SetVariable = "setvariable";
         public static readonly String SetTaskVariable = "settaskvariable";
+        public static readonly String SetEndpoint = "setendpoint";
         public static readonly String UploadFile = "uploadfile";
         public static readonly String UploadSummary = "uploadsummary";
     }
@@ -613,5 +717,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker
     {
         public static readonly String Variable = "variable";
         public static readonly String IsSecret = "issecret";
+    }
+
+    internal static class TaskSetEndpointEventProperties
+    {
+        public static readonly String EndpointId = "id";
+        public static readonly String Field = "field";
+        public static readonly String Key = "key";
     }
 }

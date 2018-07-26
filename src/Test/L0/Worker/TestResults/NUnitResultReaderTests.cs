@@ -52,8 +52,9 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.TestResults
             "  </test-suite>" +
             "</test-results>";
 
-        private const string _nUnit3ResultsXml = 
-            "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"no\"?><test-run id=\"2\" testcasecount=\"5\" result=\"Failed\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\" engine-version=\"3.4.1.0\" clr-version=\"4.0.30319.42000\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.178828\"><command-line><![CDATA[\"C:\\Program Files (x86)\\NUnit.org\\nunit-console\\nunit3-console.exe\"  \"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\\ExpectedExceptionExample\\bin\\Release\\ExpectedExceptionExample.dll\"]]></command-line><test-suite type=\"Assembly\" id=\"0-1006\" name=\"ExpectedExceptionExample.dll\" fullname=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\\ExpectedExceptionExample\\bin\\Release\\ExpectedExceptionExample.dll\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.102433\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><environment framework-version=\"3.4.1.0\" clr-version=\"2.0.50727.8689\" os-version=\"Microsoft Windows NT 10.0.10586.0\" platform=\"Win32NT\" cwd=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\" machine-name=\"PRMUTN-PC\" user=\"prmutn\" user-domain=\"FAREAST\" culture=\"en-IN\" uiculture=\"en-US\" os-architecture=\"x64\" /><settings><setting name=\"WorkDirectory\" value=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\" /><setting name=\"ImageRuntimeVersion\" value=\"2.0.50727\" /><setting name=\"ImageRequiresX86\" value=\"False\" /><setting name=\"ImageRequiresDefaultAppDomainAssemblyResolver\" value=\"False\" /><setting name=\"NumberOfTestWorkers\" value=\"12\" /></settings><properties><property name=\"_PID\" value=\"64680\" /><property name=\"_APPDOMAIN\" value=\"test-domain-\" /></properties><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-suite type=\"TestSuite\" id=\"0-1007\" name=\"ExpectedExceptionExample\" fullname=\"ExpectedExceptionExample\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.083422\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-suite type=\"TestFixture\" id=\"0-1000\" name=\"ExpectedExceptionTests\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.072832\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-case id=\"0-1003\" name=\"AnotherTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.AnotherTest\" methodname=\"AnotherTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1902677290\" result=\"Inconclusive\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"-0.026448\" asserts=\"0\"><reason><message><![CDATA[]]></message></reason></test-case><test-case id=\"0-1005\" name=\"HandlesArgumentExceptionAsType\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.HandlesArgumentExceptionAsType\" methodname=\"HandlesArgumentExceptionAsType\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1751424779\" result=\"Passed\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.001804\" asserts=\"0\" /><test-case id=\"0-1002\" name=\"SomeFailingTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest\" methodname=\"SomeFailingTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1236998109\" result=\"Failed\" label=\"Error\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.004298\" asserts=\"0\"><failure><message><![CDATA[System.ArgumentException : Value does not fall within the expected range.]]></message><stack-trace><![CDATA[   at ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest()]]></stack-trace></failure></test-case><test-case id=\"0-1004\" name=\"SomeIgnoredTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeIgnoredTest\" methodname=\"SomeIgnoredTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Ignored\" seed=\"584340542\" result=\"Skipped\" label=\"Ignored\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.001308\" asserts=\"0\"><properties><property name=\"_SKIPREASON\" value=\"Some reason\" /></properties><reason><message><![CDATA[Some reason]]></message></reason></test-case><test-case id=\"0-1001\" name=\"SomeRandomPassingTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeRandomPassingTest\" methodname=\"SomeRandomPassingTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"987550463\" result=\"Passed\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.000352\" asserts=\"0\" /></test-suite></test-suite></test-suite></test-run>";
+        private const string _nUnit3ResultsXml = "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"no\"?><test-run id=\"2\" testcasecount=\"5\" result=\"Failed\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\" engine-version=\"3.4.1.0\" clr-version=\"4.0.30319.42000\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.178828\"><command-line><![CDATA[\"C:\\Program Files (x86)\\NUnit.org\\nunit-console\\nunit3-console.exe\"  \"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\\ExpectedExceptionExample\\bin\\Release\\ExpectedExceptionExample.dll\"]]></command-line><test-suite type=\"Assembly\" id=\"0-1006\" name=\"ExpectedExceptionExample.dll\" fullname=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\\ExpectedExceptionExample\\bin\\Release\\ExpectedExceptionExample.dll\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.102433\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><environment framework-version=\"3.4.1.0\" clr-version=\"2.0.50727.8689\" os-version=\"Microsoft Windows NT 10.0.10586.0\" platform=\"Win32NT\" cwd=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\" machine-name=\"PRMUTN-PC\" user=\"prmutn\" user-domain=\"FAREAST\" culture=\"en-IN\" uiculture=\"en-US\" os-architecture=\"x64\" /><settings><setting name=\"WorkDirectory\" value=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\" /><setting name=\"ImageRuntimeVersion\" value=\"2.0.50727\" /><setting name=\"ImageRequiresX86\" value=\"False\" /><setting name=\"ImageRequiresDefaultAppDomainAssemblyResolver\" value=\"False\" /><setting name=\"NumberOfTestWorkers\" value=\"12\" /></settings><properties><property name=\"_PID\" value=\"64680\" /><property name=\"_APPDOMAIN\" value=\"test-domain-\" /></properties><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-suite type=\"TestSuite\" id=\"0-1007\" name=\"ExpectedExceptionExample\" fullname=\"ExpectedExceptionExample\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.083422\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-suite type=\"TestFixture\" id=\"0-1000\" name=\"ExpectedExceptionTests\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.072832\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-case id=\"0-1003\" name=\"AnotherTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.AnotherTest\" methodname=\"AnotherTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1902677290\" result=\"Inconclusive\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"-0.026448\" asserts=\"0\"><reason><message><![CDATA[]]></message></reason></test-case><test-case id=\"0-1005\" name=\"HandlesArgumentExceptionAsType\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.HandlesArgumentExceptionAsType\" methodname=\"HandlesArgumentExceptionAsType\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1751424779\" result=\"Passed\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.001804\" asserts=\"0\" /><test-case id=\"0-1002\" name=\"SomeFailingTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest\" methodname=\"SomeFailingTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1236998109\" result=\"Failed\" label=\"Error\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.004298\" asserts=\"0\"><failure><message><![CDATA[System.ArgumentException : Value does not fall within the expected range.]]></message><stack-trace><![CDATA[   at ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest()]]></stack-trace></failure><output><![CDATA[This is standard console output.]]></output><attachments><attachment><filePath>C:\\Users\\navb\\Pictures\\dummy1.png</filePath></attachment></attachments></test-case><test-case id=\"0-1004\" name=\"SomeIgnoredTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeIgnoredTest\" methodname=\"SomeIgnoredTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Ignored\" seed=\"584340542\" result=\"Skipped\" label=\"Ignored\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.001308\" asserts=\"0\"><properties><property name=\"_SKIPREASON\" value=\"Some reason\" /></properties><reason><message><![CDATA[Some reason]]></message></reason></test-case><test-case id=\"0-1001\" name=\"SomeRandomPassingTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeRandomPassingTest\" methodname=\"SomeRandomPassingTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"987550463\" result=\"Passed\" start-time=\"0001-01-01 00:00:00Z\" end-time=\"0001-01-01 00:00:00Z\" duration=\"0.000000\" asserts=\"0\" /></test-suite></test-suite></test-suite></test-run>";
+
+        private const string _nUnit3ResultsXmlWithAttachments = "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"no\"?><test-run id=\"2\" testcasecount=\"5\" result=\"Failed\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\" engine-version=\"3.4.1.0\" clr-version=\"4.0.30319.42000\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.178828\"><command-line><![CDATA[\"C:\\Program Files (x86)\\NUnit.org\\nunit-console\\nunit3-console.exe\"  \"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\\ExpectedExceptionExample\\bin\\Release\\ExpectedExceptionExample.dll\"]]></command-line><test-suite type=\"Assembly\" id=\"0-1006\" name=\"ExpectedExceptionExample.dll\" fullname=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\\ExpectedExceptionExample\\bin\\Release\\ExpectedExceptionExample.dll\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.102433\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><environment framework-version=\"3.4.1.0\" clr-version=\"2.0.50727.8689\" os-version=\"Microsoft Windows NT 10.0.10586.0\" platform=\"Win32NT\" cwd=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\" machine-name=\"PRMUTN-PC\" user=\"prmutn\" user-domain=\"FAREAST\" culture=\"en-IN\" uiculture=\"en-US\" os-architecture=\"x64\" /><settings><setting name=\"WorkDirectory\" value=\"C:\\Users\\prmutn\\Downloads\\nunit-csharp-samples-master\" /><setting name=\"ImageRuntimeVersion\" value=\"2.0.50727\" /><setting name=\"ImageRequiresX86\" value=\"False\" /><setting name=\"ImageRequiresDefaultAppDomainAssemblyResolver\" value=\"False\" /><setting name=\"NumberOfTestWorkers\" value=\"12\" /></settings><properties><property name=\"_PID\" value=\"64680\" /><property name=\"_APPDOMAIN\" value=\"test-domain-\" /></properties><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-suite type=\"TestSuite\" id=\"0-1007\" name=\"ExpectedExceptionExample\" fullname=\"ExpectedExceptionExample\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.083422\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-suite type=\"TestFixture\" id=\"0-1000\" name=\"ExpectedExceptionTests\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" testcasecount=\"5\" result=\"Failed\" site=\"Child\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.072832\" total=\"5\" passed=\"2\" failed=\"1\" inconclusive=\"1\" skipped=\"1\" asserts=\"0\"><failure><message><![CDATA[One or more child tests had errors]]></message></failure><test-case id=\"0-1003\" name=\"AnotherTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.AnotherTest\" methodname=\"AnotherTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1902677290\" result=\"Inconclusive\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"-0.026448\" asserts=\"0\"><reason><message><![CDATA[]]></message></reason></test-case><test-case id=\"0-1005\" name=\"HandlesArgumentExceptionAsType\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.HandlesArgumentExceptionAsType\" methodname=\"HandlesArgumentExceptionAsType\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1751424779\" result=\"Passed\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.001804\" asserts=\"0\" /><test-case id=\"0-1002\" name=\"SomeFailingTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest\" methodname=\"SomeFailingTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"1236998109\" result=\"Failed\" label=\"Error\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.004298\" asserts=\"0\"><failure><message><![CDATA[System.ArgumentException : Value does not fall within the expected range.]]></message><stack-trace><![CDATA[   at ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest()]]></stack-trace></failure><output><![CDATA[This is standard console output.]]></output><attachments><attachment><filePath>C:\\Users\\navb\\Pictures\\dummy1.png</filePath></attachment><attachment><filePath>C:\\Users\\navb\\Pictures\\dummy4.png</filePath></attachment></attachments></test-case><test-case id=\"0-1004\" name=\"SomeIgnoredTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeIgnoredTest\" methodname=\"SomeIgnoredTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Ignored\" seed=\"584340542\" result=\"Skipped\" label=\"Ignored\" start-time=\"2016-10-26 05:40:02Z\" end-time=\"2016-10-26 05:40:02Z\" duration=\"0.001308\" asserts=\"0\"><properties><property name=\"_SKIPREASON\" value=\"Some reason\" /></properties><reason><message><![CDATA[Some reason]]></message></reason></test-case><test-case id=\"0-1001\" name=\"SomeRandomPassingTest\" fullname=\"ExpectedExceptionExample.ExpectedExceptionTests.SomeRandomPassingTest\" methodname=\"SomeRandomPassingTest\" classname=\"ExpectedExceptionExample.ExpectedExceptionTests\" runstate=\"Runnable\" seed=\"987550463\" result=\"Passed\" start-time=\"0001-01-01 00:00:00Z\" end-time=\"0001-01-01 00:00:00Z\" duration=\"0.000000\" asserts=\"0\" /></test-suite><attachments><attachment><filePath>C:\\Users\\navb\\Pictures\\dummy2.png</filePath></attachment></attachments></test-suite><attachments><attachment><filePath>C:\\Users\\navb\\Pictures\\dummy3.png</filePath></attachment></attachments></test-suite></test-run>";
 
         private const string _nUnitSimpleResultsXml =
             "<?xml version =\"1.0\" encoding=\"UTF-8\"?>" +
@@ -167,10 +168,46 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.TestResults
             var failedTestResult = _testRunData.Results.Where(r => r.Outcome.Equals("Failed")).First();
             Assert.Equal("System.ArgumentException : Value does not fall within the expected range.", failedTestResult.ErrorMessage);
             Assert.Equal("   at ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest()", failedTestResult.StackTrace);
+            Assert.Equal("This is standard console output.", failedTestResult.AttachmentData.ConsoleLog);
             Assert.Equal(1, _testRunData.Results.Count(r => r.Outcome.Equals("NotExecuted")));
             Assert.Equal(1, _testRunData.Results.Count(r => r.Outcome.Equals("Inconclusive")));
             Assert.Equal(1, _testRunData.Attachments.Length);
             Assert.Equal("NUnit Test Run", _testRunData.Name);
+            Assert.Equal(default(DateTime), _testRunData.Results[4].StartedDate);
+            Assert.Equal(default(DateTime), _testRunData.Results[4].CompletedDate);
+            Assert.Equal(0f, _testRunData.Results[4].DurationInMs);
+            // Platform is honored when BuildId is present.
+            Assert.True(String.Equals(_testRunData.BuildPlatform, "Win32NT", StringComparison.OrdinalIgnoreCase));
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "PublishTestResults")]
+        public void PublishNUnit3ResultsWhenThereIsNoBuild()
+        {
+            SetupMocks();
+            _nunitResultsToBeRead = _nUnit3ResultsXml;
+            ReadResults(new TestRunContext("owner", String.Empty, string.Empty, 0, "buildUri", "releaseUri", "releaseEnvironmentUri"));
+
+            Assert.NotNull(_testRunData);
+            Assert.Equal(5, _testRunData.Results.Length);
+            Assert.Equal(2, _testRunData.Results.Count(r => r.Outcome.Equals("Passed")));
+            Assert.Equal(1, _testRunData.Results.Count(r => r.Outcome.Equals("Failed")));
+            var failedTestResult = _testRunData.Results.Where(r => r.Outcome.Equals("Failed")).First();
+            Assert.Equal("System.ArgumentException : Value does not fall within the expected range.", failedTestResult.ErrorMessage);
+            Assert.Equal("   at ExpectedExceptionExample.ExpectedExceptionTests.SomeFailingTest()", failedTestResult.StackTrace);
+            Assert.Equal("This is standard console output.", failedTestResult.AttachmentData.ConsoleLog);
+            Assert.Equal(1, _testRunData.Results.Count(r => r.Outcome.Equals("NotExecuted")));
+            Assert.Equal(1, _testRunData.Results.Count(r => r.Outcome.Equals("Inconclusive")));
+            Assert.Equal(1, _testRunData.Attachments.Length);
+            Assert.Equal("NUnit Test Run", _testRunData.Name);
+            Assert.Equal(default(DateTime), _testRunData.Results[4].StartedDate);
+            Assert.Equal(default(DateTime), _testRunData.Results[4].CompletedDate);
+            Assert.Equal(0f, _testRunData.Results[4].DurationInMs);
+
+            // When Build Id is 0, BuildPlatform and BuildFlavour shouldn't be set as the server makes validation and throws exception if these values are present without the build id specified.
+            Assert.True(String.IsNullOrEmpty(_testRunData.BuildPlatform));
+            Assert.True(String.IsNullOrEmpty(_testRunData.BuildFlavor));
         }
 
         [Fact]
@@ -185,7 +222,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.TestResults
             Assert.NotNull(_testRunData);
             Assert.Equal("MyRunTitle", _testRunData.Name);
         }
-        
+
 
         [Fact]
         [Trait("Level", "L0")]
@@ -423,8 +460,8 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.TestResults
             _nunitResultsToBeRead = _nUnitSimpleResultsXml;
             ReadResults(new TestRunContext("owner", "platform", "configuration", 1, "buildUri", "releaseUri", "releaseEnvironment"));
             DateTime testStartDate, testCompleteDate;
-            DateTime.TryParse(_testRunData.StartDate, out testStartDate);
-            DateTime.TryParse(_testRunData.CompleteDate, out testCompleteDate);
+            DateTime.TryParse(_testRunData.StartDate, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out testStartDate);
+            DateTime.TryParse(_testRunData.CompleteDate, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out testCompleteDate);
             TimeSpan duration = testCompleteDate - testStartDate;
             Assert.Equal(1.653, duration.TotalSeconds);
         }
@@ -480,6 +517,55 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.TestResults
             Assert.NotNull(_testRunData);
         }
 
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "PublishTestResults")]
+        public void PublishNUnit3ResultsShouldConsiderTestCaseAttachments()
+        {
+            SetupMocks();
+            _nunitResultsToBeRead = _nUnit3ResultsXml;
+
+            ReadResults(new TestRunContext("owner", String.Empty, string.Empty, 0, "buildUri", "releaseUri", "releaseEnvironmentUri"));
+
+            var failedTestWithAttachment = _testRunData.Results.Where(x => x.Outcome.Equals("Failed")).FirstOrDefault();
+            Assert.Equal(failedTestWithAttachment.AttachmentData.AttachmentsFilePathList.Count(), 1);
+            Assert.Collection(failedTestWithAttachment.AttachmentData.AttachmentsFilePathList.ToList(), x=>{x.Equals(@"C:\Users\navb\Pictures\dummy1.png");});
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "PublishTestResults")]
+        public void PublishNUnit3ResultsShouldConsiderTestCaseAttachmentsMultiple()
+        {
+            SetupMocks();
+            _nunitResultsToBeRead = _nUnit3ResultsXmlWithAttachments;
+
+            ReadResults(new TestRunContext("owner", String.Empty, string.Empty, 0, "buildUri", "releaseUri", "releaseEnvironmentUri"));
+
+            var failedTestWithAttachment = _testRunData.Results.Where(x => x.Outcome.Equals("Failed")).FirstOrDefault();
+            Assert.Equal(failedTestWithAttachment.AttachmentData.AttachmentsFilePathList.Count(), 2);
+            Assert.Collection(failedTestWithAttachment.AttachmentData.AttachmentsFilePathList.ToList(), x=>{x.Equals(@"C:\Users\navb\Pictures\dummy1.png");}, y=>{y.Equals( @"C:\Users\navb\Pictures\dummy4.png");});
+
+            // checking other test cases should not have attachments.
+            var passedTest = _testRunData.Results.Where(x => x.Outcome.Equals("Passed")).FirstOrDefault();
+            Assert.Equal(passedTest.AttachmentData.AttachmentsFilePathList.Count(), 0);
+        }
+
+        [Fact]
+        [Trait("Level", "L0")]
+        [Trait("Category", "PublishTestResults")]
+        public void PublishNUnit3ResultsShouldConsiderTestSuiteLevelAttachments()
+        {
+            SetupMocks();
+            _nunitResultsToBeRead = _nUnit3ResultsXmlWithAttachments;
+
+            ReadResults(new TestRunContext("owner", String.Empty, string.Empty, 0, "buildUri", "releaseUri", "releaseEnvironmentUri"));
+
+            // 2 files are test suites level attachments and one is the result file itself.
+            Assert.Equal(_testRunData.Attachments.Count(), 3);
+            Assert.Collection(_testRunData.Attachments.ToList(), x=>{x.Equals(@"C:\Users\navb\Pictures\dummy2.png");}, y=>{y.Equals( @"C:\Users\navb\Pictures\dummy3.png");}, z=>{z.Equals(_fileName);});
+        }
+
         public void Dispose()
         {
             _nUnitReader.AddResultsFileToRunLevelAttachments = true;
@@ -497,7 +583,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker.TestResults
             TestHostContext hc = new TestHostContext(this, name);
             _ec = new Mock<IExecutionContext>();
             List<string> warnings;
-            var variables = new Variables(hc, new Dictionary<string, string>(), new List<MaskHint>(), out warnings);
+            var variables = new Variables(hc, new Dictionary<string, VariableValue>(), out warnings);
             _ec.Setup(x => x.Variables).Returns(variables);
         }
 

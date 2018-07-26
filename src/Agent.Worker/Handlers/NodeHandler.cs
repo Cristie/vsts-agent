@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.Services.Agent.Util;
+using Microsoft.VisualStudio.Services.Agent.Util;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -53,10 +53,10 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             // Ensure compat vso-task-lib exist at the root of _work folder
             // This will make vsts-agent works against 2015 RTM/QU1 TFS, since tasks in those version doesn't package with task lib
             // Put the 0.5.5 version vso-task-lib into the root of _work/node_modules folder, so tasks are able to find those lib.
-            if (!File.Exists(Path.Combine(IOUtil.GetWorkPath(HostContext), "node_modules", "vso-task-lib", "package.json")))
+            if (!File.Exists(Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Work), "node_modules", "vso-task-lib", "package.json")))
             {
                 string vsoTaskLibFromExternal = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Externals), "vso-task-lib");
-                string compatVsoTaskLibInWork = Path.Combine(IOUtil.GetWorkPath(HostContext), "node_modules", "vso-task-lib");
+                string compatVsoTaskLibInWork = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Work), "node_modules", "vso-task-lib");
                 IOUtil.CopyDirectory(vsoTaskLibFromExternal, compatVsoTaskLibInWork, ExecutionContext.CancellationToken);
             }
 #endif
@@ -79,19 +79,12 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             string workingDirectory = Data.WorkingDirectory;
             if (string.IsNullOrEmpty(workingDirectory))
             {
-                if (!string.IsNullOrEmpty(ExecutionContext.Variables.System_DefaultWorkingDirectory))
+                workingDirectory = ExecutionContext.Variables.Get(Constants.Variables.System.DefaultWorkingDirectory);
+                if (string.IsNullOrEmpty(workingDirectory))
                 {
-                    workingDirectory = ExecutionContext.Variables.System_DefaultWorkingDirectory;
-                }
-                else
-                {
-                    workingDirectory = ExecutionContext.Variables.Agent_WorkFolder;
+                    workingDirectory = HostContext.GetDirectory(WellKnownDirectory.Work);
                 }
             }
-
-            ArgUtil.Directory(workingDirectory, nameof(workingDirectory));
-
-            bool useNode5 = ExecutionContext.Variables.Agent_UseNode5 ?? false;
 
             // fix vsts-task-lib for node 6.x
             // vsts-task-lib 0.6/0.7/0.8/0.9/2.0-preview implemented String.prototype.startsWith and String.prototype.endsWith since Node 5.x doesn't have them.
@@ -101,57 +94,38 @@ namespace Microsoft.VisualStudio.Services.Agent.Worker.Handlers
             // as long as vsts-task-lib be loaded into memory, it will overwrite the implementation node 6.x has, 
             // so any scirpt that use the second parameter (length) will encounter unexpected result.
             // to avoid customer hit this error, we will modify the file (extensions.js) under vsts-task-lib module folder when customer choose to use Node 6.x
-            if (!useNode5)
-            {
-                Trace.Info("Inspect node_modules folder, make sure vsts-task-lib doesn't overwrite String.startsWith/endsWith.");
-                FixVstsTaskLibModule();
-            }
+            Trace.Info("Inspect node_modules folder, make sure vsts-task-lib doesn't overwrite String.startsWith/endsWith.");
+            FixVstsTaskLibModule();
 
-            // Setup the process invoker.
-            using (var processInvoker = HostContext.CreateService<IProcessInvoker>())
-            {
-                processInvoker.OutputDataReceived += OnDataReceived;
-                processInvoker.ErrorDataReceived += OnDataReceived;
+            StepHost.OutputDataReceived += OnDataReceived;
+            StepHost.ErrorDataReceived += OnDataReceived;
 
-                string file;
-                string arguments;
-                file = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Externals),
-                                        useNode5 ? "node-5.10.1" : "node",
-                                        "bin",
-                                        $"node{IOUtil.ExeExtension}");
-                // Format the arguments passed to node.
-                // 1) Wrap the script file path in double quotes.
-                // 2) Escape double quotes within the script file path. Double-quote is a valid
-                // file name character on Linux.
-                arguments = StringUtil.Format(@"""{0}""", target.Replace(@"""", @"\"""));
-
-                if (!string.IsNullOrEmpty(ExecutionContext.Container.ContainerId))
-                {
-                    var containerProvider = HostContext.GetService<IContainerOperationProvider>();
-                    containerProvider.GetHandlerContainerExecutionCommandline(ExecutionContext, file, arguments, workingDirectory, Environment, out file, out arguments);
-                    Environment.Clear();
-                }
+            string file = Path.Combine(HostContext.GetDirectory(WellKnownDirectory.Externals), "node", "bin", $"node{IOUtil.ExeExtension}");
+            // Format the arguments passed to node.
+            // 1) Wrap the script file path in double quotes.
+            // 2) Escape double quotes within the script file path. Double-quote is a valid
+            // file name character on Linux.
+            string arguments = StepHost.ResolvePathForStepHost(StringUtil.Format(@"""{0}""", target.Replace(@"""", @"\""")));
 
 #if OS_WINDOWS
-                // It appears that node.exe outputs UTF8 when not in TTY mode.
-                Encoding outputEncoding = Encoding.UTF8;
+            // It appears that node.exe outputs UTF8 when not in TTY mode.
+            Encoding outputEncoding = Encoding.UTF8;
 #else
                 // Let .NET choose the default.
-                Encoding outputEncoding = null;
+            Encoding outputEncoding = null;
 #endif
 
-                // Execute the process. Exit code 0 should always be returned.
-                // A non-zero exit code indicates infrastructural failure.
-                // Task failure should be communicated over STDOUT using ## commands.
-                await processInvoker.ExecuteAsync(
-                    workingDirectory: workingDirectory,
-                    fileName: file,
-                    arguments: arguments,
-                    environment: Environment,
-                    requireExitCodeZero: true,
-                    outputEncoding: outputEncoding,
-                    cancellationToken: ExecutionContext.CancellationToken);
-            }
+            // Execute the process. Exit code 0 should always be returned.
+            // A non-zero exit code indicates infrastructural failure.
+            // Task failure should be communicated over STDOUT using ## commands.
+            await StepHost.ExecuteAsync(workingDirectory: StepHost.ResolvePathForStepHost(workingDirectory),
+                                        fileName: StepHost.ResolvePathForStepHost(file),
+                                        arguments: arguments,
+                                        environment: Environment,
+                                        requireExitCodeZero: true,
+                                        outputEncoding: outputEncoding,
+                                        killProcessOnCancel: false,
+                                        cancellationToken: ExecutionContext.CancellationToken);
         }
 
         private void OnDataReceived(object sender, ProcessDataReceivedEventArgs e)

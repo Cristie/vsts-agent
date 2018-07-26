@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Xunit;
+using Pipelines = Microsoft.TeamFoundation.DistributedTask.Pipelines;
 
 namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
 {
@@ -27,7 +28,7 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
                 List<TaskInstance> tasks = new List<TaskInstance>();
                 Guid JobId = Guid.NewGuid();
                 string jobName = "some job name";
-                var jobRequest = new AgentJobRequestMessage(plan, timeline, JobId, jobName, jobName, environment, tasks);
+                var jobRequest = Pipelines.AgentJobRequestMessageUtil.Convert(new AgentJobRequestMessage(plan, timeline, JobId, jobName, jobName, environment, tasks));
 
                 // Arrange: Setup the paging logger.
                 var pagingLogger = new Mock<IPagingLogger>();
@@ -53,15 +54,13 @@ namespace Microsoft.VisualStudio.Services.Agent.Tests.Worker
             configurationStore.Setup(x => x.GetSettings()).Returns(new AgentSettings());
             hc.SetSingleton(configurationStore.Object);
 
-            // Arrange: Setup the secret masker.
-            var secretMasker = new Mock<ISecretMasker>();
-            secretMasker.Setup(x => x.MaskSecrets(It.IsAny<string>()))
-                .Returns((string x) => x);
-            hc.SetSingleton(secretMasker.Object);
-
             // Arrange: Setup the proxy configation.
             var proxy = new Mock<IVstsAgentWebProxy>();
             hc.SetSingleton(proxy.Object);
+
+            // Arrange: Setup the cert configation.
+            var cert = new Mock<IAgentCertificateManager>();
+            hc.SetSingleton(cert.Object);
 
             // Arrange: Create the execution context.
             hc.SetSingleton(new Mock<IJobServerQueue>().Object);
